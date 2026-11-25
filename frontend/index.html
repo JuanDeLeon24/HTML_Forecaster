@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<link rel="stylesheet" href="/assets/app.css">
+<title>HTML_FORECASTER · Partidos del día</title>
+</head>
+<body>
+<main class="max-w-7xl mx-auto px-4 py-5 space-y-5">
+  <section class="flex flex-wrap items-end gap-3">
+    <div>
+      <h1 class="text-xl font-bold">Partidos del día</h1>
+      <p class="text-sm muted">Probabilidades basadas en datos históricos reales. Cada cifra muestra su calidad de dato.</p>
+    </div>
+    <div class="ml-auto flex flex-wrap items-center gap-2">
+      <button class="btn btn-ghost" id="prev" aria-label="Día anterior">‹</button>
+      <input type="date" id="date">
+      <button class="btn btn-ghost" id="next" aria-label="Día siguiente">›</button>
+      <button class="btn" id="collect">Recolectar y pronosticar</button>
+    </div>
+  </section>
+  <div id="job" class="hidden panel panel-b space-y-2"><div class="text-sm" id="job-label"></div><div class="progress"><div id="job-bar" style="width:0"></div></div></div>
+
+  <section class="grid grid-cols-2 md:grid-cols-4 gap-3" id="kpis"></section>
+
+  <section class="panel">
+    <div class="panel-h"><h2>Top 10</h2>
+      <div class="tabs" id="rank-tabs"></div>
+    </div>
+    <div class="scroll-x" id="rank-body"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-h"><h2>Todos los partidos</h2>
+      <div class="flex gap-2 items-center"><input id="filter" placeholder="Filtrar equipo o liga" class="w-48"><label class="text-xs muted flex items-center gap-1"><input type="checkbox" id="only-fc"> solo con pronóstico</label></div>
+    </div>
+    <div class="scroll-x" id="matches"></div>
+  </section>
+  <p class="text-xs muted">Las probabilidades son estimaciones estadísticas, no certezas. El índice de confianza = probabilidad × (0.5 + 0.5 × calidad/100).</p>
+</main>
+<script src="/assets/common.js"></script>
+<script src="/assets/index.js"></script>
+</body>
+</html>

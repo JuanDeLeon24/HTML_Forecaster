@@ -1,0 +1,24 @@
+{
+  "name": "html-forecaster",
+  "version": "0.3.0",
+  "description": "Plataforma de análisis y predicción probabilística de fútbol basada en evidencia estadística (Poisson, Dixon-Coles, Elo, modelo ponderado).",
+  "main": "backend/server.js",
+  "private": true,
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning backend/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch backend/server.js",
+    "collect": "node --disable-warning=ExperimentalWarning backend/cli.js collect",
+    "forecast": "node --disable-warning=ExperimentalWarning backend/cli.js forecast",
+    "settle": "node --disable-warning=ExperimentalWarning backend/cli.js settle",
+    "learn": "node --disable-warning=ExperimentalWarning backend/cli.js learn",
+    "daily": "node --disable-warning=ExperimentalWarning backend/cli.js daily",
+    "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "license": "MIT"
+}

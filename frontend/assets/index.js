@@ -1,0 +1,129 @@
+/* Dashboard principal: partidos del día + rankings Top 10 + recolección. */
+(() => {
+HF.header('index');
+const $ = (id) => document.getElementById(id);
+const state = { date: HF.param('date') || HF.today(), matches: [], rankings: null, tab: 'confidence' };
+
+const TABS = [
+  ['confidence', 'Mayor confianza'], ['value', 'Mejor valor (EV)'], ['combinations', 'Combinaciones'],
+  ['btts', 'BTTS'], ['over', 'Over 2.5'], ['under', 'Under 2.5'], ['corners', 'Corners +8.5'], ['cards', 'Tarjetas +3.5'],
+];
+
+function setDate(d) {
+  state.date = d;
+  $('date').value = d;
+  history.replaceState(null, '', `?date=${d}`);
+  load();
+}
+function shift(days) {
+  const d = new Date(`${state.date}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + days);
+  setDate(d.toISOString().slice(0, 10));
+}
+
+async function load() {
+  $('matches').innerHTML = '<div class="empty">Cargando…</div>';
+  try {
+    const [m, r] = await Promise.all([HF.api(`/matches?date=${state.date}`), HF.api(`/rankings?date=${state.date}`)]);
+    state.matches = m.matches; state.rankings = r;
+    renderKpis(); renderTabs(); renderRanking(); renderMatches();
+  } catch (e) {
+    $('matches').innerHTML = `<div class="empty">Error: ${HF.esc(e.message)}</div>`;
+  }
+}
+
+function renderKpis() {
+  const fc = state.matches.filter((m) => m.forecast?.status === 'ok');
+  const ins = state.matches.filter((m) => m.forecast?.status === 'insufficient').length;
+  const avgQ = fc.length ? Math.round(fc.reduce((s, m) => s + m.forecast.quality.score, 0) / fc.length) : null;
+  const kp = [
+    ['Partidos', state.matches.length, 'en la base para esta fecha'],
+    ['Pronosticados', fc.length, `${ins} con muestra insuficiente`],
+    ['Calidad media', avgQ ?? '—', 'sobre 100'],
+    ['Con cuotas', state.rankings?.meta.withOdds ?? 0, 'permiten calcular valor esperado'],
+  ];
+  $('kpis').innerHTML = kp.map(([l, v, s]) => `<div class="panel kpi"><div class="l">${l}</div><div class="v num">${v}</div><div class="text-xs muted">${s}</div></div>`).join('');
+}
+
+function renderTabs() {
+  $('rank-tabs').innerHTML = TABS.map(([k, l]) => `<button data-k="${k}" class="${state.tab === k ? 'active' : ''}">${l}</button>`).join('');
+  $('rank-tabs').querySelectorAll('button').forEach((b) => { b.onclick = () => { state.tab = b.dataset.k; renderTabs(); renderRanking(); }; });
+}
+
+function renderRanking() {
+  const list = state.rankings?.[state.tab] || [];
+  if (!list.length) {
+    const msg = state.tab === 'value' ? 'No hay cuotas registradas con valor esperado positivo para esta fecha.' : 'Sin pronósticos para esta fecha. Pulsa “Recolectar y pronosticar”.';
+    $('rank-body').innerHTML = `<div class="empty">${msg}</div>`;
+    return;
+  }
+  const extraH = state.tab === 'value' ? '<th>Cuota</th><th>EV</th><th>¼ Kelly</th>' : state.tab === 'combinations' ? '<th>Riesgo</th><th>Cuota justa</th>' : '';
+  $('rank-body').innerHTML = `<table class="t"><thead><tr><th>#</th><th>Partido</th><th>Selección</th><th>Prob.</th><th>Confianza</th>${extraH}<th>Dato</th></tr></thead><tbody>${list.map((r, i) => `
+    <tr><td class="num muted">${i + 1}</td>
+      <td><a href="/analysis?id=${encodeURIComponent(r.matchId)}">${HF.esc(r.match)}</a><div class="text-xs muted">${HF.esc(r.tournament || '')} · ${HF.time(r.startTime)}</div></td>
+      <td>${HF.esc(r.label)}${r.assumptions?.length ? `<div class="text-xs muted">${HF.esc(r.assumptions.join(' '))}</div>` : ''}</td>
+      <td class="num" style="min-width:90px">${HF.pct(r.probability, 1)}${HF.pbar(r.probability)}</td>
+      <td class="num font-semibold">${HF.pct(r.confidence, 1)}</td>
+      ${state.tab === 'value' ? `<td class="num">${HF.n(r.odds)}</td><td class="num ok">+${HF.pct(r.ev, 1)}</td><td class="num">${HF.pct(r.kellyQuarter, 1)}</td>` : ''}
+      ${state.tab === 'combinations' ? `<td>${HF.esc(r.risk)}</td><td class="num">${HF.n(r.fairOdds)}</td>` : ''}
+      <td>${HF.qBadge(r.quality, r.qualityScore)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderMatches() {
+  const q = $('filter').value.trim().toLowerCase();
+  const only = $('only-fc').checked;
+  const rows = state.matches.filter((m) => (!q || `${m.home} ${m.away} ${m.tournament}`.toLowerCase().includes(q)) && (!only || m.forecast?.status === 'ok'));
+  if (!rows.length) {
+    $('matches').innerHTML = `<div class="empty">${state.matches.length ? 'Ningún partido coincide con el filtro.' : 'No hay partidos guardados para esta fecha. Pulsa “Recolectar y pronosticar” para descargarlos.'}</div>`;
+    return;
+  }
+  $('matches').innerHTML = `<table class="t"><thead><tr><th>Hora</th><th>Partido</th><th>1 · X · 2</th><th>λ goles</th><th>O2.5</th><th>BTTS</th><th>Pick</th><th>Dato</th></tr></thead><tbody>${rows.map((m) => {
+    const f = m.forecast;
+    const score = m.homeGoals !== null ? `<span class="font-semibold num">${m.homeGoals}-${m.awayGoals}</span>` : '';
+    let cells;
+    if (!f) cells = '<td colspan="5" class="muted text-xs">Sin pronóstico (partido ya iniciado o datos no recolectados)</td><td></td>';
+    else if (f.status !== 'ok') cells = `<td colspan="5" class="text-xs" style="color:var(--warn)">${HF.esc(f.reason)}</td><td>${HF.qBadge(f.quality.grade, f.quality.score)}</td>`;
+    else cells = `<td>${HF.bar3(f.p1X2)}<div class="text-xs muted num mt-1">${HF.pct(f.p1X2[1])} · ${HF.pct(f.p1X2.X)} · ${HF.pct(f.p1X2[2])}</div></td>
+      <td class="num text-xs">${HF.n(f.lambdas.home)} – ${HF.n(f.lambdas.away)}</td>
+      <td class="num">${HF.pct(f.over25)}</td><td class="num">${HF.pct(f.btts)}</td>
+      <td class="text-xs">${f.pick ? `${HF.esc(f.pick.label)} <b class="num">${HF.pct(f.pick.probability)}</b>` : '—'}</td>
+      <td>${HF.qBadge(f.quality.grade, f.quality.score)}</td>`;
+    return `<tr><td class="num">${HF.time(m.startTime)}<div class="text-xs muted">${HF.esc(m.status)}</div></td>
+      <td><a href="/analysis?id=${encodeURIComponent(m.id)}">${HF.esc(m.home)} vs ${HF.esc(m.away)}</a> ${score}<div class="text-xs muted">${HF.esc(m.category ? m.category + ' · ' : '')}${HF.esc(m.tournament || '')}</div></td>${cells}</tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+async function collect() {
+  $('collect').disabled = true;
+  $('job').classList.remove('hidden');
+  $('job-label').textContent = 'Iniciando recolección…';
+  try {
+    const { job } = await HF.api('/collect', { method: 'POST', body: JSON.stringify({ date: state.date }) });
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const j = await HF.api(`/jobs/${job.id}`);
+      if (j.progress) {
+        $('job-label').textContent = `Recolectando ${j.progress.done}/${j.progress.total}: ${j.progress.label}`;
+        $('job-bar').style.width = `${(j.progress.done / j.progress.total) * 100}%`;
+      }
+      if (j.status === 'done') {
+        const c = j.result.collected; const f = j.result.forecasted;
+        $('job-label').textContent = `Listo: ${c.matches} partidos, ${c.teams} equipos, ${c.statsFetched} estadísticas nuevas, ${c.errors.length} errores · ${f.forecasted} pronósticos, ${f.insufficient} con muestra insuficiente.`;
+        break;
+      }
+      if (j.status === 'error') { $('job-label').textContent = `Error: ${j.error}`; break; }
+    }
+  } catch (e) {
+    $('job-label').textContent = `Error: ${e.message}`;
+  }
+  $('collect').disabled = false;
+  load();
+}
+
+$('date').onchange = (e) => setDate(e.target.value);
+$('prev').onclick = () => shift(-1);
+$('next').onclick = () => shift(1);
+$('collect').onclick = collect;
+$('filter').oninput = renderMatches;
+$('only-fc').onchange = renderMatches;
+setDate(state.date);
+})();
