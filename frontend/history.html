@@ -4,26 +4,12 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://cdn.tailwindcss.com/3.4.16"></script>
 <link rel="stylesheet" href="/assets/app.css">
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <title>HTML_FORECASTER · Historial</title>
 </head>
 <body>
-<main class="max-w-7xl mx-auto px-4 py-5 space-y-5">
-  <section class="flex flex-wrap items-end gap-3">
-    <div><h1 class="text-xl font-bold">Historial de predicciones</h1><p class="text-sm muted">Pronóstico, resultado real y nivel de acierto de cada partido.</p></div>
-    <div class="ml-auto flex flex-wrap items-center gap-2 text-sm">
-      <label>Desde <input type="date" id="from"></label>
-      <label>Hasta <input type="date" id="to"></label>
-      <select id="tournament"><option value="">Todas las competiciones</option></select>
-      <input id="team" placeholder="Equipo" list="teams" class="w-40"><datalist id="teams"></datalist>
-      <button class="btn" id="apply">Aplicar</button>
-    </div>
-  </section>
-  <section class="panel panel-b scroll-x"><table id="tbl" class="t display" style="width:100%"></table></section>
-</main>
+<main class="max-w-7xl mx-auto px-4 py-5 space-y-5" id="root"></main>
 <script src="/assets/common.js"></script>
 <script src="/assets/history.js"></script>
+<script>HF.header(); HF.mount('history');</script>
 </body>
 </html>

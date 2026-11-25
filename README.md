@@ -8,7 +8,17 @@ parámetros con esa evidencia.
 > Las probabilidades son estimaciones estadísticas, no certezas. El sistema **nunca inventa datos**:
 > si no hay muestra suficiente, no emite pronóstico y lo indica.
 
-## Inicio rápido
+## Versión de archivo único (sin instalar nada)
+
+Descarga [`dist/HTML_Forecaster.html`](dist/HTML_Forecaster.html) y ábrelo con doble clic en Chrome,
+Edge o Firefox. Incluye el motor completo (modelos, validación, aprendizaje), SQLite en WebAssembly y
+los gráficos; los datos se guardan en el propio navegador (exportables desde «Datos y ajustes»).
+Solo necesita acceso a internet hacia `api.sofascore.com`. Si el navegador o la red lo bloquean,
+«Datos y ajustes → Probar conexión» lo diagnostica.
+
+Para regenerarlo tras cambiar el código: `npm run build:standalone`.
+
+## Inicio rápido (servidor)
 
 Requisitos: **Node.js ≥ 22.5** (usa el módulo nativo `node:sqlite`, sin compilar nada).
 

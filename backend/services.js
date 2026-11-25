@@ -11,7 +11,7 @@ const { runDailyCollection } = require('./collectors');
 const { runForecasts } = require('./engine/forecast');
 const { settlePending } = require('./validation/settle');
 const { learnAll } = require('./learning/weights');
-const { shiftDate } = require('./lib/dates');
+const { dayRange } = require('./lib/dates');
 
 let repos = null;
 function getRepos() {
@@ -19,22 +19,6 @@ function getRepos() {
   return repos;
 }
 function setRepos(r) { repos = r; }
-
-/** Rango [inicio, fin) en unix para una fecha local en config.timezone. */
-function dayRange(date, tz = config.timezone) {
-  const probe = (iso) => {
-    // Busca el instante UTC en que comienza el día local `iso`
-    const guess = Date.parse(`${iso}T00:00:00Z`) / 1000;
-    for (let off = -14 * 3600; off <= 14 * 3600; off += 900) {
-      const t = guess + off;
-      const local = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t * 1000));
-      const prev = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date((t - 900) * 1000));
-      if (local === iso && prev !== iso) return t;
-    }
-    return guess;
-  };
-  return [probe(date), probe(shiftDate(date, 1))];
-}
 
 async function collect(date, onProgress, options = {}) {
   return runDailyCollection(date, { provider: getProvider(), repos: getRepos(), onProgress, options });

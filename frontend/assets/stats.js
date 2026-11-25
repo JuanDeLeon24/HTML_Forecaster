@@ -1,9 +1,36 @@
 /* Panel de resultados: métricas, calibración y parámetros aprendidos. */
-(() => {
-HF.header('stats');
+HF.pages.stats = (root) => {
 const $ = (id) => document.getElementById(id);
 let chart = null;
 let report = null;
+root.innerHTML = `
+  <section class="flex flex-wrap items-end gap-3">
+    <div><h1 class="text-xl font-bold">Rendimiento del modelo</h1>
+      <p class="text-sm muted">Calculado solo con predicciones liquidadas contra resultados reales.</p></div>
+    <div class="ml-auto flex flex-wrap items-center gap-2 text-sm">
+      <label>Desde <input type="date" id="from"></label>
+      <label>Hasta <input type="date" id="to"></label>
+      <select id="market"><option value="">Todos los mercados</option><option>1X2</option><option>DC</option><option>OU</option><option>BTTS</option><option>TEAM_OU</option><option>CORNERS</option><option>CARDS</option></select>
+      <button class="btn" id="apply">Aplicar</button>
+      <button class="btn btn-ghost" id="settle" title="Descarga resultados de partidos terminados y liquida predicciones">Liquidar resultados</button>
+      <button class="btn btn-ghost" id="learn" title="Reajusta pesos del ensamble y ρ con los datos liquidados">Reaprender</button>
+    </div>
+  </section>
+  <div id="msg" class="text-sm muted"></div>
+  <section class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3" id="kpis"></section>
+  <div class="grid lg:grid-cols-2 gap-5">
+    <section class="panel"><div class="panel-h"><h2>Calibración</h2><span class="text-xs muted">ideal: puntos sobre la diagonal</span></div><div class="panel-b"><div style="height:300px"><canvas id="calib"></canvas></div></div></section>
+    <section class="panel"><div class="panel-h"><h2>Por mercado</h2></div><div class="scroll-x" id="bymarket"></div></section>
+  </div>
+  <div class="grid lg:grid-cols-2 gap-5">
+    <section class="panel"><div class="panel-h"><h2>1X2 (multiclase)</h2></div><div class="panel-b" id="mc"></div></section>
+    <section class="panel"><div class="panel-h"><h2>Parámetros del modelo</h2></div><div class="panel-b" id="params"></div></section>
+  </div>
+  <section class="panel panel-b text-xs muted space-y-1">
+    <div><b>Brier</b>: error cuadrático medio de la probabilidad (0 perfecto; 0.25 = decir 50% siempre). <b>Brier Skill</b>: mejora frente a predecir siempre la tasa base (&gt;0 aporta valor).</div>
+    <div><b>Log Loss</b>: penaliza fuertemente la sobreconfianza. <b>RPS</b>: Ranked Probability Score del 1X2 (tiene en cuenta el orden 1 &lt; X &lt; 2).</div>
+    <div><b>Accuracy / Precision / Recall / F1</b>: con umbral 50% («el modelo dijo que ocurría»). <b>ROI virtual</b>: 1 unidad por pick principal con cuota real registrada.</div>
+  </section>`;
 
 async function load() {
   const q = new URLSearchParams();
@@ -54,6 +81,7 @@ function drawCalibration() {
   const c = HF.chartColors();
   const pts = (arr) => arr.filter((b) => b.n > 0).map((b) => ({ x: b.predicted * 100, y: b.observed * 100, n: b.n }));
   if (chart) chart.destroy();
+  if (typeof Chart === 'undefined') return;
   chart = new Chart($('calib'), {
     type: 'scatter',
     data: { datasets: [
@@ -70,6 +98,7 @@ function drawCalibration() {
       },
     },
   });
+  HF.charts.push(chart);
 }
 
 async function action(path, label) {
@@ -90,6 +119,6 @@ async function action(path, label) {
 $('apply').onclick = load;
 $('settle').onclick = () => action('/settle', 'Liquidación');
 $('learn').onclick = () => action('/learn', 'Aprendizaje');
-document.addEventListener('hf-theme', () => report && drawCalibration());
+HF.onTheme = () => report && drawCalibration();
 load();
-})();
+};

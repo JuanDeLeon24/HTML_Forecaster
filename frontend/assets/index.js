@@ -1,8 +1,33 @@
 /* Dashboard principal: partidos del día + rankings Top 10 + recolección. */
-(() => {
-HF.header('index');
+HF.pages.index = (root) => {
 const $ = (id) => document.getElementById(id);
 const state = { date: HF.param('date') || HF.today(), matches: [], rankings: null, tab: 'confidence' };
+root.innerHTML = `
+  <section class="flex flex-wrap items-end gap-3">
+    <div>
+      <h1 class="text-xl font-bold">Partidos del día</h1>
+      <p class="text-sm muted">Probabilidades basadas en datos históricos reales. Cada cifra muestra su calidad de dato.</p>
+    </div>
+    <div class="ml-auto flex flex-wrap items-center gap-2">
+      <button class="btn btn-ghost" id="prev" aria-label="Día anterior">‹</button>
+      <input type="date" id="date">
+      <button class="btn btn-ghost" id="next" aria-label="Día siguiente">›</button>
+      <button class="btn" id="collect">Recolectar y pronosticar</button>
+    </div>
+  </section>
+  <div id="job" class="hidden panel panel-b space-y-2"><div class="text-sm" id="job-label"></div><div class="progress"><div id="job-bar" style="width:0"></div></div></div>
+  <section class="grid grid-cols-2 md:grid-cols-4 gap-3" id="kpis"></section>
+  <section class="panel">
+    <div class="panel-h"><h2>Top 10</h2><div class="tabs" id="rank-tabs"></div></div>
+    <div class="scroll-x" id="rank-body"></div>
+  </section>
+  <section class="panel">
+    <div class="panel-h"><h2>Todos los partidos</h2>
+      <div class="flex gap-2 items-center"><input id="filter" placeholder="Filtrar equipo o liga" class="w-48"><label class="text-xs muted flex items-center gap-1"><input type="checkbox" id="only-fc"> solo con pronóstico</label></div>
+    </div>
+    <div class="scroll-x" id="matches"></div>
+  </section>
+  <p class="text-xs muted">Las probabilidades son estimaciones estadísticas, no certezas. El índice de confianza = probabilidad × (0.5 + 0.5 × calidad/100).</p>`;
 
 const TABS = [
   ['confidence', 'Mayor confianza'], ['value', 'Mejor valor (EV)'], ['combinations', 'Combinaciones'],
@@ -12,7 +37,7 @@ const TABS = [
 function setDate(d) {
   state.date = d;
   $('date').value = d;
-  history.replaceState(null, '', `?date=${d}`);
+  HF.setQuery({ date: d });
   load();
 }
 function shift(days) {
@@ -59,7 +84,7 @@ function renderRanking() {
   const extraH = state.tab === 'value' ? '<th>Cuota</th><th>EV</th><th>¼ Kelly</th>' : state.tab === 'combinations' ? '<th>Riesgo</th><th>Cuota justa</th>' : '';
   $('rank-body').innerHTML = `<table class="t"><thead><tr><th>#</th><th>Partido</th><th>Selección</th><th>Prob.</th><th>Confianza</th>${extraH}<th>Dato</th></tr></thead><tbody>${list.map((r, i) => `
     <tr><td class="num muted">${i + 1}</td>
-      <td><a href="/analysis?id=${encodeURIComponent(r.matchId)}">${HF.esc(r.match)}</a><div class="text-xs muted">${HF.esc(r.tournament || '')} · ${HF.time(r.startTime)}</div></td>
+      <td><a href="${HF.link('analysis', { id: r.matchId })}">${HF.esc(r.match)}</a><div class="text-xs muted">${HF.esc(r.tournament || '')} · ${HF.time(r.startTime)}</div></td>
       <td>${HF.esc(r.label)}${r.assumptions?.length ? `<div class="text-xs muted">${HF.esc(r.assumptions.join(' '))}</div>` : ''}</td>
       <td class="num" style="min-width:90px">${HF.pct(r.probability, 1)}${HF.pbar(r.probability)}</td>
       <td class="num font-semibold">${HF.pct(r.confidence, 1)}</td>
@@ -88,7 +113,7 @@ function renderMatches() {
       <td class="text-xs">${f.pick ? `${HF.esc(f.pick.label)} <b class="num">${HF.pct(f.pick.probability)}</b>` : '—'}</td>
       <td>${HF.qBadge(f.quality.grade, f.quality.score)}</td>`;
     return `<tr><td class="num">${HF.time(m.startTime)}<div class="text-xs muted">${HF.esc(m.status)}</div></td>
-      <td><a href="/analysis?id=${encodeURIComponent(m.id)}">${HF.esc(m.home)} vs ${HF.esc(m.away)}</a> ${score}<div class="text-xs muted">${HF.esc(m.category ? m.category + ' · ' : '')}${HF.esc(m.tournament || '')}</div></td>${cells}</tr>`;
+      <td><a href="${HF.link('analysis', { id: m.id })}">${HF.esc(m.home)} vs ${HF.esc(m.away)}</a> ${score}<div class="text-xs muted">${HF.esc(m.category ? m.category + ' · ' : '')}${HF.esc(m.tournament || '')}</div></td>${cells}</tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -107,6 +132,7 @@ async function collect() {
       }
       if (j.status === 'done') {
         const c = j.result.collected; const f = j.result.forecasted;
+        HF.refreshHealth();
         $('job-label').textContent = `Listo: ${c.matches} partidos, ${c.teams} equipos, ${c.statsFetched} estadísticas nuevas, ${c.errors.length} errores · ${f.forecasted} pronósticos, ${f.insufficient} con muestra insuficiente.`;
         break;
       }
@@ -126,4 +152,4 @@ $('collect').onclick = collect;
 $('filter').oninput = renderMatches;
 $('only-fc').onchange = renderMatches;
 setDate(state.date);
-})();
+};

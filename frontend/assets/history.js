@@ -1,9 +1,19 @@
-/* Historial con filtros (fecha, competición, equipo) y DataTables. */
-(() => {
-HF.header('history');
+/* Historial con filtros (fecha, competición, equipo). */
+HF.pages.history = (root) => {
 const $ = (id) => document.getElementById(id);
-let table = null;
 let teams = [];
+root.innerHTML = `
+  <section class="flex flex-wrap items-end gap-3">
+    <div><h1 class="text-xl font-bold">Historial de predicciones</h1><p class="text-sm muted">Pronóstico, resultado real y nivel de acierto de cada partido.</p></div>
+    <div class="ml-auto flex flex-wrap items-center gap-2 text-sm">
+      <label>Desde <input type="date" id="from"></label>
+      <label>Hasta <input type="date" id="to"></label>
+      <select id="tournament"><option value="">Todas las competiciones</option></select>
+      <input id="team" placeholder="Equipo" list="teams" class="w-40"><datalist id="teams"></datalist>
+      <button class="btn" id="apply">Aplicar</button>
+    </div>
+  </section>
+  <section class="panel panel-b" id="tbl"><div class="empty">Cargando…</div></section>`;
 
 async function load() {
   const q = new URLSearchParams();
@@ -13,23 +23,22 @@ async function load() {
   const r = await HF.api(`/history?${q}`);
   const sel = $('tournament');
   if (sel.options.length === 1) r.tournaments.forEach((x) => sel.add(new Option(x.name, x.id)));
-  const rows = r.items.map((i) => [
-    i.startTime, `<a href="/analysis?id=${encodeURIComponent(i.matchId)}">${HF.esc(i.match)}</a><div class="text-xs muted">${HF.esc(i.tournament || '')}</div>`,
-    i.pick ? `${HF.esc(i.pick.label)} <span class="num muted">${HF.pct(i.pick.probability)}</span>` : '<span class="muted">—</span>',
-    i.score ?? `<span class="muted">${HF.esc(i.status)}</span>`,
-    i.pick ? HF.outcome(i.pick.outcome, i.pick.void) : '—',
-    i.hitRate === null ? '—' : `${HF.pct(i.hitRate)} <span class="text-xs muted">(${i.graded})</span>`,
-    i.causes.length ? `<span class="text-xs">${i.causes.map((c) => HF.esc(c.text)).join('<br>')}</span>` : '',
-  ]);
-  if (table) { table.clear(); table.rows.add(rows).draw(); return; }
-  table = new DataTable('#tbl', {
-    data: rows, order: [[0, 'desc']], pageLength: 25,
-    columns: [
-      { title: 'Fecha', render: (d, type) => (type === 'display' ? HF.dateTime(d) : d) },
-      { title: 'Partido' }, { title: 'Pick principal' }, { title: 'Resultado' }, { title: 'Pick' },
-      { title: 'Acierto ≥50%' }, { title: 'Causas detectadas' },
+  const rows = r.items.map((i) => ({
+    text: `${i.match} ${i.tournament || ''} ${i.pick?.label || ''} ${i.causes.map((c) => c.text).join(' ')}`,
+    sort: [i.startTime, i.match, i.pick?.probability ?? -1, i.score ?? '', i.pick?.outcome ?? -1, i.hitRate ?? -1, i.causes.length],
+    cells: [
+      `<span class="num">${HF.dateTime(i.startTime)}</span>`,
+      `<a href="${HF.link('analysis', { id: i.matchId })}">${HF.esc(i.match)}</a><div class="text-xs muted">${HF.esc(i.tournament || '')}</div>`,
+      i.pick ? `${HF.esc(i.pick.label)} <span class="num muted">${HF.pct(i.pick.probability)}</span>` : '<span class="muted">—</span>',
+      i.score ?? `<span class="muted">${HF.esc(i.status)}</span>`,
+      i.pick ? HF.outcome(i.pick.outcome, i.pick.void) : '—',
+      i.hitRate === null ? '—' : `${HF.pct(i.hitRate)} <span class="text-xs muted">(${i.graded})</span>`,
+      i.causes.length ? `<span class="text-xs">${i.causes.map((c) => HF.esc(c.text)).join('<br>')}</span>` : '',
     ],
-    language: { search: 'Buscar:', lengthMenu: 'Mostrar _MENU_', info: '_START_–_END_ de _TOTAL_', infoEmpty: 'Sin registros', emptyTable: 'Aún no hay pronósticos guardados.', zeroRecords: 'Sin coincidencias', paginate: { previous: '‹', next: '›' } },
+  }));
+  HF.table($('tbl'), {
+    columns: ['Fecha', 'Partido', 'Pick principal', 'Resultado', 'Pick', 'Acierto ≥50%', 'Causas detectadas'],
+    rows, empty: 'Aún no hay pronósticos guardados.',
   });
 }
 
@@ -38,6 +47,6 @@ $('team').oninput = async (e) => {
   teams = await HF.api(`/teams?q=${encodeURIComponent(e.target.value)}`);
   $('teams').innerHTML = teams.map((t) => `<option value="${HF.esc(t.name)}">`).join('');
 };
-$('apply').onclick = () => load().catch((e) => alert(e.message));
-load().catch((e) => { $('tbl').outerHTML = `<div class="empty">Error: ${HF.esc(e.message)}</div>`; });
-})();
+$('apply').onclick = () => load().catch((e) => { $('tbl').innerHTML = `<div class="empty">Error: ${HF.esc(e.message)}</div>`; });
+load().catch((e) => { $('tbl').innerHTML = `<div class="empty">Error: ${HF.esc(e.message)}</div>`; });
+};

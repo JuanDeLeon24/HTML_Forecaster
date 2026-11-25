@@ -1,7 +1,5 @@
 /* Análisis detallado de un partido: modelos, mercados, explicación, calidad y combinador. */
-(() => {
-HF.header('');
-const root = document.getElementById('root');
+HF.pages.analysis = (root) => {
 let chart = null;
 let data = null;
 
@@ -170,6 +168,7 @@ function drawChart(o) {
   const ds = [['Poisson-DC', o.models.poisson], ['Elo', o.models.elo], ['Ponderado', o.models.weighted], ['Ensamble final', o.probabilities['1X2']]].filter(([, p]) => p);
   const palette = [c.home, c.draw, c.away, c.accent];
   if (chart) chart.destroy();
+  if (typeof Chart === 'undefined') return;
   chart = new Chart(document.getElementById('models'), {
     type: 'bar',
     data: { labels: ['1 · Local', 'X · Empate', '2 · Visitante'], datasets: ds.map(([l, p], i) => ({ label: l, data: [p[1], p.X, p[2]].map((x) => x * 100), backgroundColor: i === ds.length - 1 ? c.accent : HF.alpha(palette[i], 0.55), borderRadius: 3 })) },
@@ -179,7 +178,8 @@ function drawChart(o) {
       scales: { x: { ticks: { color: c.muted }, grid: { display: false } }, y: { ticks: { color: c.muted, callback: (v) => `${v}%` }, grid: { color: c.border }, beginAtZero: true } },
     },
   });
+  HF.charts.push(chart);
 }
-document.addEventListener('hf-theme', () => data?.forecast?.output?.status === 'ok' && drawChart(data.forecast.output));
+HF.onTheme = () => data?.forecast?.output?.status === 'ok' && drawChart(data.forecast.output);
 load();
-})();
+};
