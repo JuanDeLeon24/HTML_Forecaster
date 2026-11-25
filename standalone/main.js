@@ -62,6 +62,26 @@ function withHint(msg) {
   return /fetch|network|load failed|cors/i.test(msg) && !msg.includes('Sofascore') ? `${msg}. ${NET_HINT}` : msg;
 }
 
+/** Explica un resultado vacío: cuántos partidos traía el archivo y de qué torneos. */
+function diagnose(data, tournaments) {
+  const day = new Map();
+  for (const [path, body] of Object.entries(data.responses)) {
+    if (!path.startsWith('/sport/football/scheduled-events/')) continue;
+    for (const e of body?.events ?? []) {
+      const d = new Intl.DateTimeFormat('en-CA', { timeZone: config.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(e.startTimestamp * 1000));
+      if (d === data.date) day.set(e.id, e);
+    }
+  }
+  const byT = new Map();
+  for (const e of day.values()) {
+    const ut = e.tournament?.uniqueTournament;
+    if (!ut) continue;
+    const c = byT.get(ut.id) || { id: ut.id, name: ut.name, users: ut.userCount || 0, n: 0 };
+    c.n++; byT.set(ut.id, c);
+  }
+  return { eventsThatDay: day.size, tournaments, available: [...byT.values()].sort((a, b) => b.users - a.users || b.n - a.n).slice(0, 12) };
+}
+
 async function boot() {
   const status = document.getElementById('boot');
   try {
@@ -123,7 +143,10 @@ async function boot() {
       onProgress({ label: 'Liquidando resultados…' });
       const settled = await settlePending({ provider, repos });
       const learned = services.learn();
-      const collected = await runDailyCollection(data.date, { provider, repos, onProgress });
+      // Si en sofascore.com se eligieron otros torneos, se usan esos para esta importación
+      const options = Array.isArray(data.tournaments) ? { tournaments: data.tournaments } : {};
+      const collected = await runDailyCollection(data.date, { provider, repos, onProgress, options });
+      collected.diagnostics = diagnose(data, options.tournaments ?? config.collection.tournaments);
       const forecasted = services.forecast(data.date);
       db.dirty = true;
       await persist();

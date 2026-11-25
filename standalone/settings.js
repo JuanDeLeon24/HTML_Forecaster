@@ -30,7 +30,7 @@ HF.pages.settings = (root) => {
     </div></section>
     <section class="panel"><div class="panel-h"><h2>Qué recolectar</h2></div><div class="panel-b space-y-3 text-sm">
       <label class="block">Torneos (IDs de Sofascore separados por coma; vacío = todos)<br><input id="tournaments" class="w-full" value="${HF.esc(c.collection.tournaments.join(','))}"></label>
-      <p class="text-xs muted">17 Premier League · 8 LaLiga · 23 Serie A · 35 Bundesliga · 34 Ligue 1 · 7 Champions League · 679 Europa League · 325 Brasileirão · 155 Liga Profesional Argentina · 11621 Liga MX · 242 MLS · 1335 Copa Sudamericana · 384 Copa Libertadores</p>
+      <p class="text-xs muted">17 Premier League · 8 LaLiga · 23 Serie A · 35 Bundesliga · 34 Ligue 1 · 7 Champions League · 679 Europa League · 17015 Conference League · 325 Brasileirão · 155 Liga Profesional Argentina · 11621 Liga MX · 242 MLS · 1335 Copa Sudamericana · 384 Copa Libertadores</p>
       <div class="grid grid-cols-2 gap-3">
         <label>Máx. partidos por día (0 = sin límite)<br><input id="maxMatches" type="number" min="0" value="${c.collection.maxMatches}"></label>
         <label>Partidos de histórico por equipo<br><input id="historyDepth" type="number" min="5" max="50" value="${c.collection.historyDepth}"></label>

@@ -55,7 +55,28 @@
     for (const d of [shift(date, -1), date, shift(date, 1)]) {
       for (const e of (await get(`/sport/football/scheduled-events/${d}`))?.events ?? []) scheduled.set(e.id, e);
     }
-    let matches = [...scheduled.values()].filter((e) => localDate(e.startTimestamp) === date && allowed(e)).sort((a, b) => a.startTimestamp - b.startTimestamp);
+    const ofDay = [...scheduled.values()].filter((e) => localDate(e.startTimestamp) === date);
+    let matches = ofDay.filter(allowed).sort((a, b) => a.startTimestamp - b.startTimestamp);
+    if (!matches.length && ofDay.length) {
+      // Ningún partido en los torneos configurados: ofrecer los torneos que sí juegan ese día
+      const counts = new Map();
+      for (const e of ofDay) {
+        const ut = e.tournament?.uniqueTournament;
+        if (!ut) continue;
+        const k = ut.id;
+        const c = counts.get(k) || { id: k, name: `${ut.name}${e.tournament?.category?.name ? ' (' + e.tournament.category.name + ')' : ''}`, n: 0, users: ut.userCount || 0 };
+        c.n++; counts.set(k, c);
+      }
+      const list = [...counts.values()].sort((a, b) => b.users - a.users || b.n - a.n).slice(0, 25);
+      const answer = prompt(`Ninguno de tus torneos (${CFG.tournaments.join(', ') || 'todos'}) juega el ${date}.\nTorneos con partidos ese día (ID · nombre · partidos):\n`
+        + list.map((t) => `${t.id} · ${t.name} · ${t.n}`).join('\n')
+        + '\n\nEscribe los IDs a analizar, separados por coma:', list.slice(0, 3).map((t) => t.id).join(','));
+      const ids = (answer || '').split(',').map((x) => parseInt(x.trim(), 10)).filter(Number.isFinite);
+      if (ids.length) {
+        CFG.tournaments = ids;
+        matches = ofDay.filter(allowed).sort((a, b) => a.startTimestamp - b.startTimestamp);
+      }
+    }
     if (CFG.maxMatches > 0) matches = matches.slice(0, CFG.maxMatches);
     if (!matches.length) say(`No hay partidos de los torneos elegidos el ${date}. Se descargarán solo resultados recientes.`);
 
@@ -112,7 +133,7 @@
       await get(`/event/${e.id}/incidents`).catch(() => {});
     }
 
-    const file = { format: 'hf-sofascore-cache', version: 1, date, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, createdAt: new Date().toISOString(), requests: n, responses: out };
+    const file = { format: 'hf-sofascore-cache', version: 1, date, tournaments: CFG.tournaments, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, createdAt: new Date().toISOString(), requests: n, responses: out };
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: 'application/json' }));
     a.download = `sofascore_${date}.json`;

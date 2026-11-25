@@ -169,6 +169,12 @@ async function importJson(file) {
     });
     const c = r.collected; const f = r.forecasted; const s = r.settled;
     $('job-label').textContent = `Importado ${r.date}: ${c.matches} partidos, ${c.teams} equipos, ${c.statsFetched} estadísticas · ${f.forecasted} pronósticos (${f.insufficient} con muestra insuficiente, ${f.skippedStarted} ya iniciados) · ${s.predictions} predicciones liquidadas${c.errors.length ? ` · ${c.errors.length} avisos` : ''}.`;
+    const dg = c.diagnostics;
+    if (!c.matches && dg) {
+      $('job-label').innerHTML = dg.eventsThatDay
+        ? `El archivo tiene ${dg.eventsThatDay} partidos el ${HF.esc(r.date)}, pero ninguno de tus torneos (${HF.esc(dg.tournaments.join(', ') || 'todos')}). Torneos que juegan ese día: ${dg.available.map((t) => `<b>${t.id}</b> ${HF.esc(t.name)} (${t.n})`).join(' · ')}. Añade los que quieras en <a href="${HF.link('settings')}">Datos y ajustes → Torneos</a>, guarda, vuelve a arrastrar el marcador y repite la descarga.`
+        : `El archivo no contiene partidos del ${HF.esc(r.date)}. Comprueba la fecha elegida en el recolector.`;
+    }
     HF.refreshHealth();
     if (r.date !== state.date) { setDate(r.date); return; }
   } catch (e) {
