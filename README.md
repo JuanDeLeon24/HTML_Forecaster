@@ -24,6 +24,13 @@ cp .env.example .env
 npm start
 ```
 
+En **Windows PowerShell 5** no existe `&&` ni `cp`: ejecuta cada comando por separado y copia el
+archivo de configuración con:
+
+```powershell
+Copy-Item .env.example .env
+```
+
 Abre http://127.0.0.1:3000 y pulsa **«Recolectar y pronosticar»**. También por CLI:
 
 ```bash
