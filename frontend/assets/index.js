@@ -12,10 +12,16 @@ root.innerHTML = `
       <button class="btn btn-ghost" id="prev" aria-label="Día anterior">‹</button>
       <input type="date" id="date">
       <button class="btn btn-ghost" id="next" aria-label="Día siguiente">›</button>
-      <button class="btn" id="collect">Recolectar y pronosticar</button>
-      ${HF.standalone ? '<label class="btn btn-ghost" style="cursor:pointer" title="Importar el archivo descargado con el recolector desde sofascore.com">Importar datos (.json)<input type="file" id="import-json" accept=".json,application/json" class="hidden"></label>' : ''}
+      ${HF.standalone
+    ? `<button class="btn btn-ghost" id="collect" title="Conexión directa: Sofascore suele rechazarla (HTTP 403)">Conexión directa</button>
+      <label class="btn" style="cursor:pointer" title="Importar el archivo descargado con el recolector desde sofascore.com">Importar datos (.json)<input type="file" id="import-json" accept=".json,application/json" class="hidden"></label>`
+    : '<button class="btn" id="collect">Recolectar y pronosticar</button>'}
     </div>
   </section>
+  ${HF.standalone ? `<div class="panel panel-b text-sm" id="howto">
+    <b>Cómo cargar datos:</b> 1) En <a href="${HF.link('settings')}">Datos y ajustes</a> arrastra el botón «⚽ HF Recolector» a la barra de marcadores (una sola vez).
+    2) Abre <a href="https://www.sofascore.com" target="_blank" rel="noopener">www.sofascore.com</a> y pulsa ese marcador; descargará <code>sofascore_AAAA-MM-DD.json</code>.
+    3) Vuelve aquí y pulsa <b>«Importar datos (.json)»</b>.</div>` : ''}
   <div id="job" class="hidden panel panel-b space-y-2"><div class="text-sm" id="job-label"></div><div class="progress"><div id="job-bar" style="width:0"></div></div></div>
   <section class="grid grid-cols-2 md:grid-cols-4 gap-3" id="kpis"></section>
   <section class="panel">
