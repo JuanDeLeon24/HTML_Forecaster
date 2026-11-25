@@ -45,11 +45,26 @@
 
   try {
     say('Comprobando acceso…');
-    try { await get(`/sport/football/scheduled-events/${date}`); } catch (e) {
-      base = 'https://api.sofascore.com/api/v1';
-      delete out[`/sport/football/scheduled-events/${date}`];
-      await get(`/sport/football/scheduled-events/${date}`);
+    // Se prueban varias direcciones de la API; se usa la primera que devuelva partidos de verdad
+    const probePath = `/sport/football/scheduled-events/${date}`;
+    const candidates = ['https://api.sofascore.com/api/v1', '/api/v1', 'https://www.sofascore.com/api/v1'];
+    const report = [];
+    let found = false;
+    for (const c of candidates) {
+      try {
+        const res = await fetch(c + probePath, { headers: { Accept: 'application/json' } });
+        n++;
+        const text = await res.text();
+        let j = null;
+        try { j = JSON.parse(text); } catch { /* no es JSON */ }
+        if (res.ok && Array.isArray(j?.events)) { base = c; out[probePath] = j; found = true; break; }
+        report.push(`${c}: HTTP ${res.status} ${text.slice(0, 80).replace(/</g, '&lt;')}`);
+      } catch (e) {
+        report.push(`${c}: ${e.message}`);
+      }
+      await sleep(CFG.intervalMs);
     }
+    if (!found) throw new Error(`Ninguna dirección de la API respondió con partidos.<br><small>${report.join('<br>')}</small>`);
     // 1) Partidos del día (+ vecinos por zona horaria), igual que el proveedor
     const scheduled = new Map();
     for (const d of [shift(date, -1), date, shift(date, 1)]) {
@@ -140,9 +155,9 @@
     document.body.appendChild(a); a.click(); a.remove();
     say(`Listo: ${matches.length} partidos, ${n} peticiones.<br>Se descargó <b>sofascore_${date}.json</b>. Impórtalo en HTML_Forecaster.`);
   } catch (err) {
-    say(`<span style="color:#f87171">Error: ${err.message}</span><br>Si es HTTP 403, recarga sofascore.com, espera unos segundos y vuelve a intentarlo.`);
+    say(`<span style="color:#f87171">Error: ${err.message}</span><br>Copia este texto (o haz una captura) y envíaselo a quien te ayuda con HTML_Forecaster.`); console.warn('HTML_Forecaster', err);
   } finally {
     window.__hfRunning = false;
-    setTimeout(() => box.remove(), 20000);
+    setTimeout(() => box.remove(), 120000);
   }
 })();
