@@ -13,6 +13,7 @@ root.innerHTML = `
       <input type="date" id="date">
       <button class="btn btn-ghost" id="next" aria-label="Día siguiente">›</button>
       <button class="btn" id="collect">Recolectar y pronosticar</button>
+      ${HF.standalone ? '<label class="btn btn-ghost" style="cursor:pointer" title="Importar el archivo descargado con el recolector desde sofascore.com">Importar datos (.json)<input type="file" id="import-json" accept=".json,application/json" class="hidden"></label>' : ''}
     </div>
   </section>
   <div id="job" class="hidden panel panel-b space-y-2"><div class="text-sm" id="job-label"></div><div class="progress"><div id="job-bar" style="width:0"></div></div></div>
@@ -77,7 +78,7 @@ function renderTabs() {
 function renderRanking() {
   const list = state.rankings?.[state.tab] || [];
   if (!list.length) {
-    const msg = state.tab === 'value' ? 'No hay cuotas registradas con valor esperado positivo para esta fecha.' : 'Sin pronósticos para esta fecha. Pulsa “Recolectar y pronosticar”.';
+    const msg = state.tab === 'value' ? 'No hay cuotas registradas con valor esperado positivo para esta fecha.' : `Sin pronósticos para esta fecha. Pulsa “Recolectar y pronosticar”${HF.standalone ? ' o importa los datos descargados desde sofascore.com (ver «Datos y ajustes»)' : ''}.`;
     $('rank-body').innerHTML = `<div class="empty">${msg}</div>`;
     return;
   }
@@ -149,6 +150,26 @@ $('date').onchange = (e) => setDate(e.target.value);
 $('prev').onclick = () => shift(-1);
 $('next').onclick = () => shift(1);
 $('collect').onclick = collect;
+if (HF.standalone) $('import-json').onchange = (e) => importJson(e.target.files[0]);
+
+async function importJson(file) {
+  if (!file) return;
+  $('job').classList.remove('hidden');
+  $('job-label').textContent = 'Importando…';
+  try {
+    const r = await HF.standalone.importSofascore(file, (p) => {
+      $('job-label').textContent = p.total ? `Procesando ${p.done}/${p.total}: ${p.label}` : p.label;
+      if (p.total) $('job-bar').style.width = `${(p.done / p.total) * 100}%`;
+    });
+    const c = r.collected; const f = r.forecasted; const s = r.settled;
+    $('job-label').textContent = `Importado ${r.date}: ${c.matches} partidos, ${c.teams} equipos, ${c.statsFetched} estadísticas · ${f.forecasted} pronósticos (${f.insufficient} con muestra insuficiente, ${f.skippedStarted} ya iniciados) · ${s.predictions} predicciones liquidadas${c.errors.length ? ` · ${c.errors.length} avisos` : ''}.`;
+    HF.refreshHealth();
+    if (r.date !== state.date) { setDate(r.date); return; }
+  } catch (e) {
+    $('job-label').textContent = `Error: ${e.message}`;
+  }
+  load();
+}
 $('filter').oninput = renderMatches;
 $('only-fc').onchange = renderMatches;
 setDate(state.date);

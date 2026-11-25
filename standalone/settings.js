@@ -7,8 +7,22 @@ HF.pages.settings = (root) => {
   <section><h1 class="text-xl font-bold">Datos y ajustes</h1>
     <p class="text-sm muted">Todo se ejecuta y guarda en este navegador. No se envía nada a ningún servidor salvo las consultas a Sofascore.</p></section>
   ${S.storageOk() ? '' : '<div class="warn-box">El navegador no permite guardar datos para este archivo: se perderán al cerrar la pestaña. Usa «Exportar» para conservarlos.</div>'}
+  <section class="panel"><div class="panel-h"><h2>Recolector desde sofascore.com (si ves «HTTP 403»)</h2></div><div class="panel-b space-y-3 text-sm">
+    <p>Sofascore rechaza con <b>HTTP 403</b> las peticiones que no salen de su propia web. Este recolector se ejecuta <b>dentro</b> de sofascore.com, descarga los datos a un archivo <code>sofascore_AAAA-MM-DD.json</code> y tú lo importas aquí. No instala nada.</p>
+    <ol class="list-decimal pl-5 space-y-1">
+      <li>Muestra la barra de marcadores (Ctrl+Mayús+B) y <b>arrastra</b> este botón a ella: <a id="bm" class="btn" style="cursor:grab">⚽ HF Recolector</a></li>
+      <li>Abre <a href="https://www.sofascore.com" target="_blank" rel="noopener">www.sofascore.com</a> y, en esa pestaña, haz clic en el marcador «⚽ HF Recolector». Elige la fecha y espera (verás el progreso abajo a la derecha).</li>
+      <li>Vuelve aquí y pulsa <b>«Importar datos (.json)»</b> en <a href="#/">Partidos del día</a>.</li>
+    </ol>
+    <p class="text-xs muted">Si cambias torneos o ajustes, guarda y vuelve a arrastrar el marcador (lleva la configuración dentro). Cada importación también liquida los pronósticos pendientes con los resultados de los últimos 7 días.</p>
+    <details><summary class="cursor-pointer">¿No puedes crear marcadores? Usa la consola</summary>
+      <p class="text-xs muted mt-2">En sofascore.com pulsa F12 → pestaña «Console», pega este código y pulsa Enter (Chrome puede pedir que escribas <code>allow pasting</code> la primera vez).</p>
+      <textarea id="bm-code" readonly class="w-full text-xs mt-1" rows="4" style="font-family:monospace;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:6px"></textarea>
+      <button class="btn btn-ghost mt-1" id="bm-copy">Copiar código</button> <span id="bm-copied" class="text-xs muted"></span>
+    </details>
+  </div></section>
   <div class="grid lg:grid-cols-2 gap-5">
-    <section class="panel"><div class="panel-h"><h2>Conexión con Sofascore</h2></div><div class="panel-b space-y-3 text-sm">
+    <section class="panel"><div class="panel-h"><h2>Conexión directa con Sofascore</h2></div><div class="panel-b space-y-3 text-sm">
       <label class="block">URL base de la API<br><input id="baseUrl" class="w-full" value="${HF.esc(c.sofascore.baseUrl)}"></label>
       <div class="flex gap-2 flex-wrap"><button class="btn" id="test">Probar conexión</button><a class="btn btn-ghost" id="open" target="_blank" rel="noopener">Abrir en pestaña nueva</a></div>
       <div id="test-out" class="text-sm"></div>
@@ -59,7 +73,8 @@ HF.pages.settings = (root) => {
       maxMatches: num('maxMatches'), historyDepth: Math.min(50, Math.max(5, num('historyDepth'))),
       statsDepth: Math.min(30, num('statsDepth')), intervalMs: Math.max(200, num('intervalMs')),
     });
-    $('save-out').textContent = 'Guardado.';
+    $('save-out').textContent = 'Guardado. Vuelve a arrastrar el marcador para que use estos ajustes.';
+    refreshBookmarklet();
   };
   $('export').onclick = () => S.exportDb();
   $('import').onchange = async (e) => {
@@ -71,6 +86,18 @@ HF.pages.settings = (root) => {
     if (!confirm('¿Borrar todos los partidos, pronósticos e historial guardados en este navegador?')) return;
     await S.resetDb(); showCounts();
   };
+  const refreshBookmarklet = () => {
+    const code = S.collectorCode();
+    $('bm').href = `javascript:${encodeURIComponent(code)}`;
+    $('bm-code').value = code;
+  };
+  $('bm').onclick = (e) => { e.preventDefault(); alert('Arrastra este botón a la barra de marcadores y úsalo estando en www.sofascore.com.'); };
+  $('bm-copy').onclick = async () => {
+    $('bm-code').select();
+    try { await navigator.clipboard.writeText($('bm-code').value); } catch { document.execCommand('copy'); }
+    $('bm-copied').textContent = 'Copiado.';
+  };
+  refreshBookmarklet();
   $('log').textContent = S.logBuffer.slice(-80).join('\n') || 'Sin actividad todavía.';
   showCounts();
 };

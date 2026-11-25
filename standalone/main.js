@@ -15,6 +15,9 @@ const { setProvider } = require('../backend/providers');
 const { SofascoreProvider } = require('../backend/providers/sofascore/client');
 const { RateLimitedClient } = require('../backend/lib/http');
 const { dispatch } = require('../backend/routes/handlers');
+const { CachedHttpClient } = require('./cachedHttp');
+const { runDailyCollection } = require('../backend/collectors');
+const { settlePending } = require('../backend/validation/settle');
 
 let db = null;
 let storageOk = true;
@@ -52,7 +55,10 @@ async function transport(method, path, body) {
   return r;
 }
 
+const HINT_403 = 'Sofascore bloquea las peticiones que no salen de su web (HTTP 403). Usa el «Recolector desde sofascore.com» de «Datos y ajustes» y luego «Importar datos (.json)».';
+
 function withHint(msg) {
+  if (/HTTP 403/.test(msg) && !msg.includes('Recolector')) return `${msg}. ${HINT_403}`;
   return /fetch|network|load failed|cors/i.test(msg) && !msg.includes('Sofascore') ? `${msg}. ${NET_HINT}` : msg;
 }
 
@@ -85,12 +91,43 @@ async function boot() {
       try {
         const res = await fetch(url, { headers: { Accept: 'application/json' } });
         const ms = Date.now() - t0;
-        if (!res.ok) return { ok: false, url, message: `Sofascore respondió HTTP ${res.status} (${ms} ms). Si es 403, está bloqueando peticiones automatizadas.` };
+        if (!res.ok) return { ok: false, url, message: `Sofascore respondió HTTP ${res.status} (${ms} ms).${res.status === 403 ? ' ' + HINT_403 : ''}` };
         const j = await res.json();
         return { ok: true, url, message: `Conexión correcta: ${j.events?.length ?? 0} partidos recibidos para hoy (${ms} ms).` };
       } catch (e) {
         return { ok: false, url, message: `${e.message}. ${NET_HINT}` };
       }
+    },
+    /** Configuración que se incrusta en el recolector (marcador) de sofascore.com. */
+    collectorConfig() {
+      const now = Math.floor(Date.now() / 1000);
+      const pendingIds = services.getRepos().openPredictionMatches(now + 86400)
+        .map((m) => Number(String(m.id).split(':').pop())).filter(Number.isFinite);
+      return {
+        tournaments: config.collection.tournaments, maxMatches: config.collection.maxMatches,
+        historyDepth: config.collection.historyDepth, statsDepth: config.collection.statsDepth,
+        h2hStatsDepth: config.collection.h2hStatsDepth, intervalMs: Math.max(250, config.http.minIntervalMs),
+        resultDays: 7, pendingIds,
+      };
+    },
+    collectorCode() {
+      return window.__HF_COLLECTOR__.replace('__CFG__', JSON.stringify(this.collectorConfig()));
+    },
+    /** Importa el .json del recolector: liquida resultados → aprende → guarda partidos → pronostica. */
+    async importSofascore(file, onProgress = () => {}) {
+      let data;
+      try { data = JSON.parse(await file.text()); } catch { throw new Error('El archivo no es un JSON válido.'); }
+      const http = new CachedHttpClient(data, config.sofascore.baseUrl);
+      const provider = new SofascoreProvider({ baseUrl: config.sofascore.baseUrl, http });
+      const repos = services.getRepos();
+      onProgress({ label: 'Liquidando resultados…' });
+      const settled = await settlePending({ provider, repos });
+      const learned = services.learn();
+      const collected = await runDailyCollection(data.date, { provider, repos, onProgress });
+      const forecasted = services.forecast(data.date);
+      db.dirty = true;
+      await persist();
+      return { date: data.date, settled, learned, collected, forecasted };
     },
     exportDb() {
       const bytes = db.export();

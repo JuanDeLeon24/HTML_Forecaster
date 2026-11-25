@@ -54,6 +54,8 @@ async function main() {
     + '\n;\n' + read(r('standalone/settings.js'));
   const pageJsMin = (await esbuild.transform(pageJs, { minify: true, target: 'es2020' })).code;
   const appCss = read(r('frontend/assets/app.css'));
+  const collector = (await esbuild.transform(read(r('standalone/bookmarklet.src.js')), { minify: true, target: 'es2020' })).code.trim();
+  if (!collector.includes('__CFG__')) throw new Error('El recolector minificado perdió el marcador __CFG__');
   const version = require(r('backend/modelConfig.js')).version;
   const esc = (s) => s.replace(/<\/script/gi, '<\\/script');
 
@@ -72,6 +74,7 @@ async function main() {
 <main class="max-w-7xl mx-auto px-4 py-5 space-y-5" id="root"></main>
 <script>${esc(chartJs)}</script>
 <script>window.__SQL_WASM__ = "${wasm}";</script>
+<script>window.__HF_COLLECTOR__ = ${esc(JSON.stringify(collector))};</script>
 <script>${esc(pageJsMin)}</script>
 <script>${esc(engineJs)}</script>
 </body>
