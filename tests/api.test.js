@@ -49,6 +49,9 @@ test('integración API: recolectar → pronosticar → consultar todos los endpo
   assert.match((await dispatch('GET', '/export', { type: 'value' })).body.csv, /^fecha,partido/);
   const health2 = (await dispatch('GET', '/health')).body;
   assert.equal(typeof health2.needsBootstrap, 'boolean');
+  const prev = (await dispatch('GET', '/notify/preview', { date })).body;
+  assert.match(prev.text, /Mayor confianza/);
+  assert.equal(prev.to, null, 'sin número configurado por defecto');
   const notify = await dispatch('POST', '/notify', {}, { date });
   assert.equal(notify.status, 500, 'WhatsApp deshabilitado por defecto → error controlado');
   assert.match(notify.body.error, /WhatsApp/);

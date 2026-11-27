@@ -183,6 +183,22 @@ o te muestra el botón «Cargar histórico completo».
 4. Para probarla ya: en la lista de tareas, clic derecho en `HTML_Forecaster diario` → **Ejecutar**.
    El resultado queda en `C:\HTML_Forecaster\logs\diario.log`.
 
+## Paso 9b · Enviar los análisis por WhatsApp (tu propia cuenta)
+
+1. Ten abierto https://web.whatsapp.com en el mismo navegador, con tu sesión iniciada.
+2. En la herramienta, pulsa **«Enviar por WhatsApp»** (Partidos del día). La primera vez te pide el número de
+   destino: escríbelo con código de país y solo números (ej. `573001234567`). Se guarda en ese navegador; para
+   cambiarlo, pulsa ⚙ junto al botón.
+3. Se abre WhatsApp Web en el chat de ese número con el Top 10 y las apuestas de valor ya escritos.
+   **Pulsa Enter** para enviarlo. Los siguientes envíos reutilizan la misma pestaña.
+4. En la página de cada partido, **«Compartir por WhatsApp»** envía el análisis de ese partido.
+
+Opcional (servidor): pon el número en `.env` como `WHATSAPP_WEB_TO=573001234567` para no tener que escribirlo.
+
+> El envío sin pulsar Enter no es posible desde una cuenta personal sin herramientas no oficiales (riesgo de
+> bloqueo de la cuenta). Para envío 100 % automático hace falta la API oficial de WhatsApp Business
+> (`WHATSAPP_ENABLED=1`, número de empresa distinto al de tu WhatsApp normal).
+
 ## Paso 10 · Dónde mirar si algo va mal
 
 | Qué | Dónde |

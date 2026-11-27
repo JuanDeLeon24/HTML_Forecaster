@@ -36,7 +36,7 @@ const toOf = (d) => (d && isIsoDate(d) ? services.dayRange(d)[1] : undefined);
 const routes = [
   ['GET', '/health', () => {
     const repos = services.getRepos();
-    return { ok: true, version: config.model.version, provider: config.provider, fallbackProvider: config.fallbackProvider ?? null, timezone: config.timezone, standalone: !!config.standalone, whatsapp: !!config.whatsapp?.enabled, counts: repos.counts(), needsBootstrap: repos.counts().finished < 500, lastRuns: repos.lastRuns(5), now: nowSec() };
+    return { ok: true, version: config.model.version, provider: config.provider, fallbackProvider: config.fallbackProvider ?? null, timezone: config.timezone, standalone: !!config.standalone, whatsapp: !!config.whatsapp?.enabled, whatsappWebTo: config.whatsapp?.webTo ?? null, counts: repos.counts(), needsBootstrap: repos.counts().finished < 500, lastRuns: repos.lastRuns(5), now: nowSec() };
   }],
 
   ['GET', '/matches', ({ query }) => {
@@ -151,6 +151,17 @@ const routes = [
       return { match: m, stats: repos.statsFor(m.id), live: analyzeLive(m, repos.statsFor(m.id), repos.incidentsFor(m.id), forecast?.output) };
     });
     return { date, count: matches.length, refreshed, refreshError, matches };
+  }],
+
+  /** Texto del resumen para enviarlo desde WhatsApp Web (tu cuenta) sin APIs de pago. */
+  ['GET', '/notify/preview', ({ query }) => {
+    const date = dateOf(query);
+    const [from, to] = services.dayRange(date);
+    const repos = services.getRepos();
+    const rk = buildRankings(repos.forecastsBetween(from, to), 10);
+    const accepted = new Set(repos.valueBetsBetween(from, to).filter((v) => v.accepted).map((v) => `${v.match_id}|${v.market}|${v.selection}|${v.line}`));
+    rk.value = rk.value.filter((v) => accepted.has(`${v.matchId}|${v.market}|${v.selection}|${v.line}`));
+    return { date, text: buildTopMessage(rk, date), to: config.whatsapp?.webTo ?? null };
   }],
 
   ['POST', '/notify', async ({ query, body }) => {

@@ -21,7 +21,8 @@ function render() {
   const head = `<section class="flex flex-wrap items-end gap-3">
     <div><div class="text-xs muted">${HF.esc(m.tournament_category ? m.tournament_category + ' · ' : '')}${HF.esc(m.tournament_name || '')} · ${HF.dateTime(m.start_time)} · ${HF.esc(m.status)}</div>
     <h1 class="text-2xl font-bold">${HF.esc(m.home_name)} <span class="muted">vs</span> ${HF.esc(m.away_name)} ${m.home_goals !== null ? `<span class="num">${m.home_goals}-${m.away_goals}</span>` : ''}</h1></div>
-    ${f ? `<div class="ml-auto text-xs muted text-right">Pronóstico #${f.id} · modelo v${HF.esc(f.modelVersion)}<br>generado ${HF.dateTime(f.createdAt)}</div>` : ''}</section>`;
+    ${f ? `<div class="ml-auto text-xs muted text-right">Pronóstico #${f.id} · modelo v${HF.esc(f.modelVersion)}<br>generado ${HF.dateTime(f.createdAt)}
+      ${f.output?.status === 'ok' ? '<div class="mt-2"><button class="btn btn-ghost" id="wa-share">Compartir por WhatsApp</button></div>' : ''}</div>` : ''}</section>`;
   if (!f) { root.innerHTML = head + '<div class="panel empty">Aún no hay pronóstico para este partido.</div>'; return; }
   const o = f.output;
   if (o.status !== 'ok') { root.innerHTML = head + `<div class="warn-box">${HF.esc(o.reason)}</div>` + qualityPanel(f.quality); return; }
@@ -56,6 +57,27 @@ function render() {
     </div>`;
   drawChart(o);
   bindBuilder();
+  const share = document.getElementById('wa-share');
+  if (share) share.onclick = () => HF.whatsapp.open(shareText(m, f));
+}
+
+/** Resumen del partido para WhatsApp (solo cifras del pronóstico guardado). */
+function shareText(m, f) {
+  const o = f.output;
+  const p = o.probabilities;
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  const lines = [
+    `⚽ ${m.home_name} vs ${m.away_name}`, `${m.tournament_name || ''} · ${HF.dateTime(m.start_time)}`, '',
+    `1X2: ${pct(p['1X2'][1])} · ${pct(p['1X2'].X)} · ${pct(p['1X2'][2])}`,
+    `Goles esperados: ${o.lambdas.home.toFixed(2)} – ${o.lambdas.away.toFixed(2)}`,
+    `Más de 2.5: ${pct(p.OU.over['2.5'])} · Ambos anotan: ${pct(p.BTTS.yes)}`,
+  ];
+  if (p.CORNERS) lines.push(`Corners +8.5: ${pct(p.CORNERS.over['8.5'])}`);
+  if (o.pick) lines.push('', `✅ ${o.pick.label}: ${pct(o.pick.probability)}${o.confidence ? ` · confianza ${o.confidence.grade} (${o.confidence.score})` : ''}`);
+  const v = (o.value || []).filter((x) => x.accepted);
+  if (v.length) lines.push(`💰 Valor: ${v.map((x) => `${x.label} @ ${x.odds} (EV +${pct(x.ev)})`).join(' · ')}`);
+  lines.push('', 'Probabilidades estadísticas, no certezas.');
+  return lines.join('\n');
 }
 
 function marketsTable(o) {
