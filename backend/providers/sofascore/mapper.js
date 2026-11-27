@@ -131,4 +131,13 @@ function mapOdds(json) {
   return out.filter((o) => o.market !== '1X2' || ['1', 'X', '2'].includes(o.selection));
 }
 
-module.exports = { ids, mapEvent, mapStatistics, mapIncidents, mapStandings, mapOdds, fractionalToDecimal };
+function mapLineups(json) {
+  const out = { home: [], away: [], missing: { home: [], away: [] } };
+  for (const side of ['home', 'away']) {
+    for (const p of json?.[side]?.players ?? []) out[side].push({ player: p.player?.name ?? null, position: p.position ?? null, isStarter: !p.substitute });
+    for (const p of json?.[side]?.missingPlayers ?? []) out.missing[side].push({ player: p.player?.name ?? null, reason: p.reason ?? p.type ?? null });
+  }
+  return out;
+}
+
+module.exports = { ids, mapLineups, mapEvent, mapStatistics, mapIncidents, mapStandings, mapOdds, fractionalToDecimal };

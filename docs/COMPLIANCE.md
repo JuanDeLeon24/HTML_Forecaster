@@ -1,6 +1,6 @@
 # Cumplimiento de la especificación «Football Statistical Intelligence Platform (Enterprise)»
 
-Estado a la versión 0.4.0. ✅ cumplido · 🟡 parcial (se explica qué falta) · ❌ pendiente (con motivo).
+Estado a la versión 0.6.0 (ver también docs/UNIFICACION-v0.6.md). ✅ cumplido · 🟡 parcial (se explica qué falta) · ❌ pendiente (con motivo).
 
 ## Restricción que condiciona todo
 
@@ -26,7 +26,8 @@ usar la herramienta en el equipo de trabajo y retrasaría la validación con dat
 | Sofascore: fixtures, odds, H2H, estadísticas, xG, rankings, eventos | ✅ | `providers/sofascore`. xG llega en las estadísticas cuando Sofascore lo publica. |
 | Sofascore: alineaciones, lesiones, live scores | ❌ | Requiere nuevos endpoints y validar su impacto; siguiente fase de datos. |
 | Torneos (Premier, Championship, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL, UECL) | ✅ | Configuración por defecto (`TOURNAMENTS` / «Datos y ajustes»). |
-| Respaldo automático Football-Data / API-Football / TheSportsDB / Understat / FBref | ❌ | La arquitectura lo admite (`providers/BaseProvider.js` + registro); falta implementar cada cliente. Varios requieren clave de API y bloquean peticiones desde navegador. |
+| Respaldo automático Football-Data / API-Football | ✅ | `FALLBACK_PROVIDER`; cada fuente con sus propios IDs y su límite de ritmo. TheSportsDB, Understat y FBref: ❌ pendientes. |
+| Carga inicial del histórico (temporadas completas) | ✅ | `npm run bootstrap`, botón en el panel y automática si hay < 500 partidos terminados. |
 | Validación obligatoria de IDs, fechas, resultados, cuotas, estadísticas, xG, torneos | ✅ | `validators/index.js`, aplicada en el único punto de entrada a la base (`repositories.js`) y antes de guardar cada pronóstico. |
 | Sin null inesperados/undefined/NaN/Infinity/negativos/probabilidades fuera de [0,1] | ✅ | Partido inválido → rechazado; estadística inválida → campo anulado; pronóstico inválido → no se guarda. |
 | Registro de errores con timestamp, API, endpoint, error, impacto en `logs/errors.log` | ✅ | `lib/logger.js` (servidor). En el archivo único: «Datos y ajustes → Errores registrados». |
@@ -68,7 +69,7 @@ usar la herramienta en el equipo de trabajo y retrasaría la validación con dat
 ### Calibración, aprendizaje y validación
 | Requisito | Estado |
 |---|---|
-| Brier, LogLoss, RPS, ECE, MCE, Sharpness | ✅ |
+| Brier, LogLoss, RPS, ECE, MCE, Sharpness | ✅ sin doble conteo (una fila por evento) + IC95 por bootstrap |
 | Curva de calibración, diagrama de fiabilidad, distribución de sharpness | ✅ |
 | Isotonic Regression y Platt Scaling automáticos | ✅ solo si mejoran fuera de muestra con ≥ 300 predicciones del mercado |
 | Aprendizaje tras cada partido: histórico, métricas, precisión, calibración, pesos | ✅ «Liquidar resultados» / importación / planificador |
@@ -80,7 +81,7 @@ usar la herramienta en el equipo de trabajo y retrasaría la validación con dat
 ### Valor, confianza y explicabilidad
 | Requisito | Estado |
 |---|---|
-| Edge, EV, EV+, Kelly, Kelly fraccional, stake sugerido | ✅ |
+| Edge, EV, EV+, Kelly, Kelly fraccional, stake sugerido | ✅ DC sin margen · exposición diaria · correlación |
 | Descarte por mala calibración, poca liquidez (margen alto) y confianza baja | ✅ con motivo visible |
 | Score de confianza 0–100 con factores y niveles A+…D | ✅ |
 | Factores principales («Localía +12%») | ✅ por ablación sobre todos los modelos |
@@ -94,10 +95,10 @@ usar la herramienta en el equipo de trabajo y retrasaría la validación con dat
 | Modelos individuales y comparador | ✅ |
 | Calibración (curvas, error) y backtesting (ROI, Yield, Profit, Drawdown) | ✅ |
 | Monitoreo diario/semanal/mensual | ✅ |
-| Reportes descargables | 🟡 exportación de la base (.sqlite); informes PDF/CSV pendientes |
+| Reportes descargables | ✅ CSV de predicciones y de apuestas de valor + exportación de la base · PDF ❌ |
 | Logs system/predictions/errors/api con rotación | ✅ servidor |
 | Backups diario/semanal/mensual con restauración automática | ✅ servidor · archivo único: exportar/importar manual |
 | Token de API, rate limiting, auditoría | ✅ servidor · JWT/login ❌ (uso local de una persona) |
 | Rendimiento (< 500 ms por probabilidad) | ✅ ~10 ms por partido con los 8 modelos y la ablación |
-| Tests unitarios, integración, regresión, estadísticos | ✅ 27 pruebas · cobertura 93 % de líneas de los módulos del motor (`npm run coverage`) · el frontend no tiene pruebas automatizadas, se verifica en navegador |
+| Tests unitarios, integración, regresión, estadísticos | ✅ 38 pruebas · cobertura 90.6 % de líneas de los módulos cargados por las pruebas (`npm run coverage`) · el frontend no tiene pruebas automatizadas, se verifica en navegador |
 | TypeScript, React, Vite, Docker | ❌ decisión explicada arriba |

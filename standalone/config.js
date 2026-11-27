@@ -24,7 +24,13 @@ const config = {
     h2hStatsDepth: 5,
     tournaments: Array.isArray(s.tournaments) ? s.tournaments : [17, 18, 8, 23, 35, 34, 7, 679, 17015],
     maxMatches: s.maxMatches ?? 0,
+    bootstrapSeasons: 2,
   },
+  // En el archivo único solo se usa Sofascore (vía recolector); estas claves existen para que el código compartido no falle
+  fallbackProvider: null,
+  footballData: { competitions: [], minIntervalMs: 6500 },
+  apiFootball: { leagues: [], minIntervalMs: 6500 },
+  whatsapp: { enabled: false, autoSend: false },
   scheduler: { enabled: false },
   model: require('../backend/modelConfig'),
   settingsKey: SETTINGS_KEY,

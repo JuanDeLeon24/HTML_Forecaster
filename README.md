@@ -65,6 +65,8 @@ npm run daily
 | `npm test` | Pruebas (modelos, validación, calibración, walk-forward, backtesting, API y pipeline completo) |
 | `npm run coverage` | Pruebas con informe de cobertura |
 | `npm run backup` / `npm run health` | Copia de seguridad manual / estado de la base y últimos errores |
+| `npm run bootstrap` | Carga temporadas completas de tus competiciones (histórico inicial) |
+| `npm run report` / `npm run test-provider` | Resumen de datos en `docs/DATOS-OBTENIDOS.md` / prueba de conexión con el proveedor |
 
 **Primera recolección:** con todos los torneos del día puede haber cientos de partidos y miles de
 peticiones. Para empezar, limita con `TOURNAMENTS=17,8,23,35,34` (Premier, LaLiga, Serie A,
@@ -94,5 +96,7 @@ API-Football, Football-Data, etc. sin tocar el núcleo (ver `docs/ARCHITECTURE.m
 - [docs/MODELS.md](docs/MODELS.md): matemáticas de cada modelo, calidad del dato y métricas
 - [docs/API.md](docs/API.md): endpoints REST
 - [docs/ROADMAP.md](docs/ROADMAP.md): estado de las versiones v0.1 → v2.0
+- [docs/UNIFICACION-v0.6.md](docs/UNIFICACION-v0.6.md): qué se unificó de v0.4 y v0.5 y qué se descartó
+- [docs/AUDIT.md](docs/AUDIT.md): auditoría de la v0.3
 - [docs/COMPLIANCE.md](docs/COMPLIANCE.md): cumplimiento de la especificación Enterprise, punto por punto
 - [docs/DATABASE.md](docs/DATABASE.md) y [docs/CALIBRATION.md](docs/CALIBRATION.md)

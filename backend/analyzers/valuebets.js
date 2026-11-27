@@ -6,6 +6,13 @@
  *   Kelly fraccional (¼) como referencia de gestión de riesgo, nunca como consejo.
  */
 function impliedNoVig(oddsRows) {
+  // 1X2 sin margen: base para derivar la Doble Oportunidad sin margen (antes se usaba con margen → edge inflado)
+  const oneX2 = oddsRows.filter((o) => o.market === '1X2');
+  let base = null;
+  if (oneX2.length === 3) {
+    const s3 = oneX2.reduce((a, r) => a + 1 / r.decimal_odds, 0);
+    base = Object.fromEntries(oneX2.map((r) => [r.selection, (1 / r.decimal_odds) / s3]));
+  }
   const groups = new Map();
   for (const o of oddsRows) {
     const key = `${o.market}|${o.line}`;
@@ -17,10 +24,12 @@ function impliedNoVig(oddsRows) {
     const complete = rows[0].market === 'DC' ? false : true; // DC no es un mercado de suma 1
     const s = rows.reduce((a, r) => a + 1 / r.decimal_odds, 0);
     for (const r of rows) {
+      let nv = complete && s > 0 ? (1 / r.decimal_odds) / s : null;
+      if (r.market === 'DC' && base) nv = r.selection === '1X' ? base['1'] + base.X : r.selection === 'X2' ? base.X + base['2'] : base['1'] + base['2'];
       out.set(`${r.market}|${r.selection}|${r.line}`, {
         odds: r.decimal_odds,
         implied: 1 / r.decimal_odds,
-        impliedNoVig: complete && s > 0 ? (1 / r.decimal_odds) / s : null,
+        impliedNoVig: nv,
         overround: complete ? s - 1 : null,
       });
     }

@@ -80,7 +80,7 @@ function prob2(m, side) {
  * Estimación de ρ por máxima verosimilitud (búsqueda en rejilla) sobre partidos
  * con λ conocidos (pronósticos ya liquidados). Devuelve null si no hay muestra.
  */
-function fitRho(samples, { grid = [-0.25, 0.1, 0.005], minSamples = 150 } = {}) {
+function fitRho(samples, { grid = [-0.2, 0, 0.005], minSamples = 150 } = {}) {
   if (samples.length < minSamples) return null;
   let best = null;
   for (let rho = grid[0]; rho <= grid[1] + 1e-9; rho += grid[2]) {

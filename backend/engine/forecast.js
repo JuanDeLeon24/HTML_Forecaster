@@ -31,7 +31,7 @@ const { assessQuality } = require('./quality');
 const { confidenceScore, rankIndex } = require('./confidence');
 const { evaluateValue } = require('./valueBets');
 const { explain } = require('./explain');
-const { label, legKey } = require('./markets');
+const { label, legKey, FAMILY } = require('./markets');
 const { suggestCombinations, CANDIDATE_LEGS, marginal } = require('./combinations');
 const { getModelParams } = require('../learning/params');
 const { validateForecastOutput } = require('../validators');
@@ -310,6 +310,14 @@ function forecastMatch(match, { repos, ratings, params, health = {} }) {
     value.push(roundDeep(v));
   }
   value.sort((a, b) => Number(b.accepted) - Number(a.accepted) || b.ev - a.ev);
+  // Selecciones correlacionadas (misma familia en el mismo partido): solo la de mayor EV
+  const familyTaken = new Set();
+  for (const v of value) {
+    if (!v.accepted) continue;
+    const fam = FAMILY[v.market] ?? v.market;
+    if (familyTaken.has(fam)) { v.accepted = false; v.stake = 0; v.discardReason = 'correlacionada con otra recomendación del mismo partido'; }
+    familyTaken.add(fam);
+  }
   output.value = value;
 
   // --- Validación obligatoria antes de guardar
@@ -418,6 +426,8 @@ function runForecasts(fromSec, toSec, { repos, now = Math.floor(Date.now() / 100
       log.error(`Error pronosticando ${m.id}`, { error: err.message, endpoint: m.id, impact: 'partido sin pronóstico' });
     }
   }
+  // Exposición diaria: máximo de apuestas y de stake total por día (gestión de riesgo)
+  if (repos.applyDailyExposure) summary.exposure = repos.applyDailyExposure(fromSec, toSec, { maxBets: params.maxBetsPerDay, maxStake: params.bankroll * params.maxDailyStakePct });
   summary.ms = Date.now() - t0;
   log.info('Pronósticos generados', summary);
   return summary;

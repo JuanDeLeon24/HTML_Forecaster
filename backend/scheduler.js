@@ -5,13 +5,15 @@
  *  - una vez al día (06:00 hora local): ciclo completo del día
  * Alternativa recomendada en servidores: cron del sistema con `npm run daily`.
  */
-const config = require('./config');
 const services = require('./services');
 const jobs = require('./lib/jobs');
 const { today } = require('./lib/dates');
 const { createLogger } = require('./lib/logger');
 const { backupNow } = require('./lib/backup');
 const { getDb } = require('./database/db');
+const config = require('./config');
+const { sendWhatsApp, buildTopMessage } = require('./lib/whatsapp');
+const { buildRankings } = require('./engine/ranking');
 
 const log = createLogger('scheduler');
 let lastDaily = null;
@@ -31,7 +33,17 @@ function startScheduler() {
     const d = today();
     if (lastDaily !== d && hourLocal() >= 6) {
       lastDaily = d;
-      jobs.start('daily', (p) => services.daily(d, p));
+      jobs.start('daily', async (p) => {
+        const r = await services.daily(d, p);
+        // Envío automático del Top 10 por WhatsApp (WHATSAPP_ENABLED=1 y WHATSAPP_AUTO=1)
+        if (config.whatsapp.enabled && config.whatsapp.autoSend) {
+          try {
+            const [from, to] = services.dayRange(d);
+            await sendWhatsApp(buildTopMessage(buildRankings(services.getRepos().forecastsBetween(from, to), 10), d));
+          } catch (e) { log.error('Fallo enviando WhatsApp', { error: e.message, impact: 'resumen diario no enviado' }); }
+        }
+        return r;
+      });
     }
   }, 10 * 60 * 1000);
 }

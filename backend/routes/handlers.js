@@ -7,6 +7,10 @@
 const config = require('../config');
 const services = require('../services');
 const jobs = require('../lib/jobs');
+const { getProvider } = require('../providers');
+const { refreshLive } = require('../collectors/live');
+const { analyzeLive } = require('../engine/live');
+const { sendWhatsApp, buildTopMessage } = require('../lib/whatsapp');
 const { isIsoDate, today, nowSec } = require('../lib/dates');
 const { buildRankings } = require('../engine/ranking');
 const { jointProbability } = require('../engine/combinations');
@@ -32,7 +36,7 @@ const toOf = (d) => (d && isIsoDate(d) ? services.dayRange(d)[1] : undefined);
 const routes = [
   ['GET', '/health', () => {
     const repos = services.getRepos();
-    return { ok: true, version: config.model.version, provider: config.provider, timezone: config.timezone, standalone: !!config.standalone, counts: repos.counts(), lastRuns: repos.lastRuns(5), now: nowSec() };
+    return { ok: true, version: config.model.version, provider: config.provider, fallbackProvider: config.fallbackProvider ?? null, timezone: config.timezone, standalone: !!config.standalone, whatsapp: !!config.whatsapp?.enabled, counts: repos.counts(), needsBootstrap: repos.counts().finished < 500, lastRuns: repos.lastRuns(5), now: nowSec() };
   }],
 
   ['GET', '/matches', ({ query }) => {
@@ -69,7 +73,12 @@ const routes = [
   ['GET', '/rankings', ({ query }) => {
     const date = dateOf(query);
     const [from, to] = services.dayRange(date);
-    return { date, ...buildRankings(services.getRepos().forecastsBetween(from, to), Number(query.limit) || 10) };
+    const repos = services.getRepos();
+    const rk = buildRankings(repos.forecastsBetween(from, to), Number(query.limit) || 10);
+    // El ranking de valor refleja la decisión final guardada (incluye el límite de exposición diaria)
+    const accepted = new Set(repos.valueBetsBetween(from, to).filter((v) => v.accepted).map((v) => `${v.match_id}|${v.market}|${v.selection}|${v.line}`));
+    rk.value = rk.value.filter((v) => accepted.has(`${v.matchId}|${v.market}|${v.selection}|${v.line}`));
+    return { date, ...rk };
   }],
 
   ['POST', '/combination', ({ body }) => {
@@ -130,6 +139,44 @@ const routes = [
     return { date, bankroll: config.model.bankroll, kellyFraction: config.model.kellyFraction, accepted: rows.filter((v) => v.accepted), discarded: rows.filter((v) => !v.accepted) };
   }],
 
+  ['GET', '/live', async ({ query }) => {
+    const date = dateOf(query);
+    const repos = services.getRepos();
+    let refreshed = null;
+    let refreshError = null;
+    try { refreshed = (await refreshLive({ provider: getProvider(), repos, date })).summary; } catch (err) { refreshError = err.message; }
+    const [from, to] = services.dayRange(date);
+    const matches = repos.matchesBetween(from, to).filter((m) => m.status === 'inprogress').map((m) => {
+      const forecast = repos.latestForecast(m.id);
+      return { match: m, stats: repos.statsFor(m.id), live: analyzeLive(m, repos.statsFor(m.id), repos.incidentsFor(m.id), forecast?.output) };
+    });
+    return { date, count: matches.length, refreshed, refreshError, matches };
+  }],
+
+  ['POST', '/notify', async ({ query, body }) => {
+    const date = dateOf(query, body);
+    const [from, to] = services.dayRange(date);
+    const rankings = buildRankings(services.getRepos().forecastsBetween(from, to), 10);
+    const text = buildTopMessage(rankings, date);
+    const result = await sendWhatsApp(text);
+    return { sent: true, text, result };
+  }],
+
+  ['GET', '/export', ({ query }) => {
+    const repos = services.getRepos();
+    const esc = (v) => (v === null || v === undefined ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const line = (arr) => arr.map(esc).join(',');
+    let rows;
+    if (query.type === 'value') {
+      rows = [line(['fecha', 'partido', 'mercado', 'seleccion', 'linea', 'cuota', 'prob_modelo', 'prob_implicita', 'edge', 'ev', 'stake', 'confianza', 'aceptada', 'motivo', 'resultado', 'beneficio'])];
+      for (const v of repos.valueBetsBetween(0, 2 ** 31)) rows.push(line([new Date(v.start_time * 1000).toISOString(), `${v.home_name} vs ${v.away_name}`, v.market, v.selection, v.line, v.odds, v.model_probability, v.bookmaker_probability, v.edge_percent, v.expected_value, v.stake, v.confidence_score, v.accepted, v.discard_reason, v.outcome, v.profit]));
+    } else {
+      rows = [line(['prediccion', 'pronostico', 'partido', 'fecha', 'mercado', 'seleccion', 'linea', 'probabilidad', 'prob_cruda', 'confianza', 'cuota', 'pick', 'resultado'])];
+      for (const r of repos.settledPredictions({})) rows.push(line([r.id, r.forecast_id, r.match_id, new Date(r.start_time * 1000).toISOString(), r.market, r.selection, r.line, r.probability, r.raw_probability, r.confidence_score, r.odds, r.is_pick, r.outcome]));
+    }
+    return { type: query.type || 'predictions', filename: `html_forecaster_${query.type || 'predicciones'}.csv`, csv: rows.join('\n') };
+  }],
+
   ['GET', '/teams', ({ query }) => services.getRepos().teamsSearch(String(query.q || ''))],
 
   ['GET', '/model', () => {
@@ -148,6 +195,10 @@ const routes = [
     return { status: r.alreadyRunning ? 409 : 202, body: r };
   }],
   ['POST', '/forecast', ({ query, body }) => services.forecast(dateOf(query, body))],
+  ['POST', '/bootstrap', () => {
+    const r = jobs.start('bootstrap', (progress) => services.bootstrap(progress));
+    return { status: r.alreadyRunning ? 409 : 202, body: r };
+  }],
   ['POST', '/settle', () => ({ status: 202, body: jobs.start('settle', async () => ({ settled: await services.settle(), learned: services.learn() })) })],
   ['POST', '/learn', () => services.learn()],
   ['GET', '/jobs', () => jobs.list()],

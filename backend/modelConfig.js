@@ -4,7 +4,7 @@
  * El motor de aprendizaje puede sobrescribirlos (tabla model_params) cuando hay muestra suficiente.
  */
 module.exports = {
-  version: '0.4.0',
+  version: '0.6.0',
   // Nivel 1 – modelo ponderado (suma = 1)
   weightedFactors: { form: 0.35, h2h: 0.2, home: 0.1, attack: 0.2, defense: 0.15 },
   weightedSlope: 3.0,
@@ -44,6 +44,9 @@ module.exports = {
   minValueConfidence: 60,
   minEdge: 0.02,
   maxOverround: 0.08,
+  // Exposición diaria: nº máximo de apuestas de valor y stake total máximo (fracción de la banca)
+  maxBetsPerDay: 5,
+  maxDailyStakePct: 0.15,
   // Muestra mínima por equipo para emitir pronóstico
   minTeamSample: 5,
   minStatsSample: 3,

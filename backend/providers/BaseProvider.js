@@ -33,6 +33,13 @@ class BaseProvider {
   async getH2H(_match) { return []; }
   async getStandings(_tournamentId, _seasonId) { return []; }
   async getOdds(_matchId) { return []; }
+  async getLineups(_matchId) { return null; }
+  /** Competiciones a seguir por defecto con este proveedor (sus propios IDs). */
+  defaultCompetitions() { return []; }
+  /** IDs de las temporadas más recientes de una competición (la actual primero). */
+  async getRecentSeasons(_competitionId, _count) { return []; }
+  /** Todos los partidos de una temporada de una competición (carga inicial del histórico). */
+  async getSeasonMatches(_competitionId, _seasonId) { return []; }
   /** Número de peticiones realizadas (para logs / auditoría). */
   get requestCount() { return 0; }
 }

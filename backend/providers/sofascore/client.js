@@ -85,6 +85,32 @@ class SofascoreProvider extends BaseProvider {
     const json = await this.get(`/event/${map.ids.native(matchId)}/odds/1/all`);
     return json ? map.mapOdds(json) : [];
   }
+
+  async getLineups(matchId) {
+    const json = await this.get(`/event/${map.ids.native(matchId)}/lineups`);
+    return json ? map.mapLineups(json) : null;
+  }
+
+  defaultCompetitions() { return config.collection.tournaments; }
+
+  async getRecentSeasons(competitionId, count = 2) {
+    const ut = String(competitionId).split(':').pop();
+    const json = await this.get(`/unique-tournament/${ut}/seasons`);
+    return (json?.seasons ?? []).slice(0, count).map((x) => ({ id: map.ids.season(x.id), name: x.name ?? x.year ?? String(x.id) }));
+  }
+
+  async getSeasonMatches(competitionId, seasonId) {
+    const ut = String(competitionId).split(':').pop();
+    const sid = map.ids.native(seasonId);
+    const events = [];
+    for (let page = 0; page < 25; page++) {
+      const json = await this.get(`/unique-tournament/${ut}/season/${sid}/events/last/${page}`);
+      if (!json?.events?.length) break;
+      events.push(...json.events);
+      if (!json.hasNextPage) break;
+    }
+    return events.map(map.mapEvent);
+  }
 }
 
 module.exports = { SofascoreProvider };

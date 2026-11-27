@@ -17,6 +17,8 @@ root.innerHTML = `
       <button class="btn" id="apply">Aplicar</button>
       <button class="btn btn-ghost" id="settle" title="Descarga resultados de partidos terminados y liquida predicciones">Liquidar resultados</button>
       <button class="btn btn-ghost" id="learn" title="Reajusta pesos del ensamble y ρ con los datos liquidados">Reaprender</button>
+      <button class="btn btn-ghost" id="csv-pred" title="Descargar todas las predicciones liquidadas">CSV predicciones</button>
+      <button class="btn btn-ghost" id="csv-value" title="Descargar las apuestas de valor">CSV valor</button>
     </div>
   </section>
   <div id="msg" class="text-sm muted"></div>
@@ -58,6 +60,8 @@ async function load() {
   } catch (e) { $('msg').textContent = `Error: ${e.message}`; }
 }
 
+const ci = (c, d) => (c ? `IC95 ${HF.n(c.low, d)}–${HF.n(c.high, d)}` : '');
+
 function render() {
   const o = report.overall;
   const pk = report.picks;
@@ -65,12 +69,12 @@ function render() {
   if (!o.n) {
     $('kpis').innerHTML = '';
     $('msg').innerHTML = 'Todavía no hay predicciones liquidadas. Las métricas aparecerán cuando terminen los partidos pronosticados y se pulse «Liquidar resultados».';
-  } else $('msg').textContent = `${o.n} predicciones binarias liquidadas · ${pk.n} picks principales.`;
+  } else $('msg').textContent = `${report.events} eventos evaluados (una fila por evento; ${report.rowsTotal} filas incluyendo selecciones complementarias) · ${report.result1X2.n || 0} partidos 1X2 · ${pk.n} picks principales.`;
   const k = [
-    ['Predicciones', o.n ?? 0, 'liquidadas'], ['Brier', HF.n(o.brier, 3), `skill ${HF.n(o.brierSkill, 3)}`], ['Log Loss', HF.n(o.logLoss, 3), 'menor es mejor'],
+    ['Eventos', o.n ?? 0, 'sin doble conteo'], ['Brier', HF.n(o.brier, 3), ci(report.ci?.brier, 3) || `skill ${HF.n(o.brierSkill, 3)}`], ['Log Loss', HF.n(o.logLoss, 3), ci(report.ci?.logLoss, 3) || 'menor es mejor'],
     ['RPS 1X2', HF.n(report.result1X2.rps, 4), `${report.result1X2.n || 0} partidos`], ['ECE', HF.pct(o.ece, 1), `MCE ${HF.pct(o.mce, 1)}`], ['Sharpness', HF.n(o.sharpness, 3), '0 = siempre 50%'],
     ['Accuracy', HF.pct(o.accuracy, 1), 'umbral 50%'], ['Precision', HF.pct(o.precision, 1), ''], ['Recall', HF.pct(o.recall, 1), ''], ['F1', HF.n(o.f1, 3), ''],
-    ['Yield picks', roi.roi === null ? '—' : HF.pct(roi.roi, 1), `${roi.bets} picks con cuota`], ['Beneficio picks', roi.bets ? HF.n(roi.profit) + ' u' : '—', 'stake 1 u'],
+    ['Yield picks', roi.yield === null || roi.yield === undefined ? '—' : HF.pct(roi.yield, 1), report.ci?.yield ? `IC95 ${HF.pct(report.ci.yield.low, 1)} a ${HF.pct(report.ci.yield.high, 1)}` : `${roi.bets} picks con cuota`], ['ROI picks', roi.roi === null || roi.roi === undefined ? '—' : HF.pct(roi.roi, 1), `beneficio ${HF.n(roi.profit)} u / banca ${roi.bankroll ?? 100} u`],
   ];
   if (o.n) $('kpis').innerHTML = k.map(([l, v, s]) => `<div class="panel kpi"><div class="l">${l}</div><div class="v num">${v}</div><div class="text-xs muted">${s}</div></div>`).join('');
 
@@ -105,6 +109,7 @@ function drawCalibration() {
       { label: 'Ideal', data: [{ x: 0, y: 0 }, { x: 100, y: 100 }], showLine: true, borderColor: c.muted, borderDash: [4, 4], pointRadius: 0 },
       { label: 'Todas las predicciones', data: pts(report.calibration), showLine: true, borderColor: c.accent, backgroundColor: c.accent },
       { label: 'Picks principales', data: pts(report.calibrationPicks), showLine: true, borderColor: c.away, backgroundColor: c.away },
+      { label: 'Tramos de igual frecuencia', data: pts(report.calibrationQuantiles || []), showLine: true, borderColor: c.good, backgroundColor: c.good, borderDash: [2, 2] },
     ] },
     options: {
       maintainAspectRatio: false,
@@ -150,7 +155,7 @@ function renderExtra() {
   $('mon-tabs').innerHTML = tabs.map(([k, l]) => `<button data-k="${k}" class="${monTab === k ? 'active' : ''}">${l}</button>`).join('');
   $('mon-tabs').querySelectorAll('button').forEach((b) => { b.onclick = () => { monTab = b.dataset.k; renderExtra(); }; });
   const mon = report.monitoring?.[monTab] || [];
-  $('mon').innerHTML = mon.length ? `<table class="t"><thead><tr><th>Periodo</th><th>Predicciones</th><th>Accuracy</th><th>Brier</th><th>Log Loss</th><th>Picks con cuota</th><th>Yield</th></tr></thead><tbody>${mon.map((r) => `<tr><td>${HF.esc(r.period)}</td><td class="num">${r.n}</td><td class="num">${HF.pct(r.accuracy, 1)}</td><td class="num">${HF.n(r.brier, 3)}</td><td class="num">${HF.n(r.logLoss, 3)}</td><td class="num">${r.bets}</td><td class="num">${r.bets ? HF.pct(r.yield, 1) : '—'}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Sin predicciones liquidadas.</div>';
+  $('mon').innerHTML = mon.length ? `<table class="t"><thead><tr><th>Periodo</th><th>Predicciones</th><th>Accuracy</th><th>Brier</th><th>Log Loss</th><th>Picks con cuota</th><th>Yield</th><th>ROI</th></tr></thead><tbody>${mon.map((r) => `<tr><td>${HF.esc(r.period)}</td><td class="num">${r.n}</td><td class="num">${HF.pct(r.accuracy, 1)}</td><td class="num">${HF.n(r.brier, 3)}</td><td class="num">${HF.n(r.logLoss, 3)}</td><td class="num">${r.bets}</td><td class="num">${r.bets ? HF.pct(r.yield, 1) : '—'}</td><td class="num">${r.bets ? HF.pct(r.roi, 1) : '—'}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Sin predicciones liquidadas.</div>';
   const th = report.trainingHistory || [];
   $('train').innerHTML = th.length ? `<table class="t"><thead><tr><th>Fecha</th><th>Modelo</th><th>Entreno</th><th>Validación</th><th>Brier</th><th>Brier base</th><th>Decisión</th></tr></thead><tbody>${th.map((r) => `<tr><td class="num">${HF.dateTime(r.finished_at)}</td><td>${HF.esc(r.model_name)}</td><td class="num">${r.training_samples}</td><td class="num">${r.validation_samples}</td><td class="num">${HF.n(r.brier, 4)}</td><td class="num">${HF.n(r.baseline_brier, 4)}</td><td>${r.adopted ? '<span class="ok">adoptado</span>' : '<span class="muted">sin cambios</span>'}<div class="text-xs muted">${HF.esc(r.reason || '')}</div></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Aún no se ha ejecutado «Reaprender».</div>';
 }
@@ -173,6 +178,8 @@ async function action(path, label) {
 $('apply').onclick = load;
 $('settle').onclick = () => action('/settle', 'Liquidación');
 $('learn').onclick = () => action('/learn', 'Aprendizaje');
+$('csv-pred').onclick = () => HF.exportCsv('predictions').catch((e) => { $('msg').textContent = e.message; });
+$('csv-value').onclick = () => HF.exportCsv('value').catch((e) => { $('msg').textContent = e.message; });
 HF.onTheme = () => report && drawCalibration();
 load();
 };

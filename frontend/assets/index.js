@@ -15,13 +15,14 @@ root.innerHTML = `
       ${HF.standalone
     ? `<button class="btn btn-ghost" id="collect" title="Conexión directa: Sofascore suele rechazarla (HTTP 403)">Conexión directa</button>
       <label class="btn" style="cursor:pointer" title="Importar el archivo descargado con el recolector desde sofascore.com">Importar datos (.json)<input type="file" id="import-json" accept=".json,application/json" class="hidden"></label>`
-    : '<button class="btn" id="collect">Recolectar y pronosticar</button>'}
+    : '<button class="btn" id="collect">Recolectar y pronosticar</button><button class="btn btn-ghost hidden" id="notify" title="Enviar el Top 10 y las apuestas de valor por WhatsApp">Enviar a WhatsApp</button>'}
     </div>
   </section>
   ${HF.standalone ? `<div class="panel panel-b text-sm" id="howto">
     <b>Cómo cargar datos:</b> 1) En <a href="${HF.link('settings')}">Datos y ajustes</a> arrastra el botón «⚽ HF Recolector» a la barra de marcadores (una sola vez).
     2) Abre <a href="https://www.sofascore.com" target="_blank" rel="noopener">www.sofascore.com</a> y pulsa ese marcador; descargará <code>sofascore_AAAA-MM-DD.json</code>.
     3) Vuelve aquí y pulsa <b>«Importar datos (.json)»</b>.</div>` : ''}
+  <div id="bootstrap-banner"></div>
   <div id="job" class="hidden panel panel-b space-y-2"><div class="text-sm" id="job-label"></div><div class="progress"><div id="job-bar" style="width:0"></div></div></div>
   <section class="grid grid-cols-2 md:grid-cols-4 gap-3" id="kpis"></section>
   <section class="panel">
@@ -55,12 +56,44 @@ function shift(days) {
 async function load() {
   $('matches').innerHTML = '<div class="empty">Cargando…</div>';
   try {
-    const [m, r, perf] = await Promise.all([HF.api(`/matches?date=${state.date}`), HF.api(`/rankings?date=${state.date}`), HF.api('/performance').catch(() => null)]);
+    const [m, r, perf, health] = await Promise.all([HF.api(`/matches?date=${state.date}`), HF.api(`/rankings?date=${state.date}`), HF.api('/performance').catch(() => null), HF.api('/health').catch(() => null)]);
     state.matches = m.matches; state.rankings = r; state.perf = perf;
+    renderBootstrap(health);
     renderKpis(); renderTabs(); renderRanking(); renderMatches();
   } catch (e) {
     $('matches').innerHTML = `<div class="empty">Error: ${HF.esc(e.message)}</div>`;
   }
+}
+
+function renderBootstrap(h) {
+  const el = $('bootstrap-banner');
+  if (!h || HF.standalone) { el.innerHTML = ''; return; }
+  if (h.whatsapp && $('notify')) $('notify').classList.remove('hidden');
+  el.innerHTML = h.needsBootstrap ? `<div class="warn-box flex flex-wrap items-center gap-3"><div><b>Histórico insuficiente:</b> la base tiene ${h.counts.finished} partidos terminados.
+    Con pocos partidos por equipo las probabilidades son poco fiables. Carga las temporadas completas de tus competiciones (una sola vez, unos minutos).</div>
+    <button class="btn" id="bootstrap">Cargar histórico completo</button></div>` : '';
+  const b = $('bootstrap');
+  if (b) b.onclick = () => runJob('/bootstrap', 'Cargando histórico', (res) => `Histórico cargado: ${res.saved} partidos guardados de ${res.matches} (${res.seasons} temporadas, ${res.errors.length} errores). Ahora pulsa «Recolectar y pronosticar».`);
+}
+
+async function runJob(path, labelText, done) {
+  $('job').classList.remove('hidden');
+  $('job-label').textContent = `${labelText}…`;
+  try {
+    const { job } = await HF.api(path, { method: 'POST', body: JSON.stringify({ date: state.date }) });
+    for (;;) {
+      await new Promise((res) => setTimeout(res, 1500));
+      const j = await HF.api(`/jobs/${job.id}`);
+      if (j.progress) {
+        $('job-label').textContent = `${labelText} ${j.progress.done ?? ''}/${j.progress.total ?? ''}: ${j.progress.label}`;
+        if (j.progress.total) $('job-bar').style.width = `${(j.progress.done / j.progress.total) * 100}%`;
+      }
+      if (j.status === 'done') { $('job-label').textContent = done(j.result); break; }
+      if (j.status === 'error') { $('job-label').textContent = `Error: ${j.error}`; break; }
+    }
+  } catch (e) { $('job-label').textContent = `Error: ${e.message}`; }
+  HF.refreshHealth();
+  load();
 }
 
 function renderKpis() {
@@ -79,7 +112,7 @@ function renderKpis() {
     ['Brier histórico', o?.n ? HF.n(o.brier, 3) : '—', o?.n ? `${o.n} predicciones liquidadas` : 'aún sin resultados'],
     ['Calibración (ECE)', o?.n ? HF.pct(o.ece, 1) : '—', 'error medio entre prob. y frecuencia'],
     ['Acierto picks', state.perf?.picks?.n ? HF.pct(state.perf.picks.accuracy, 1) : '—', state.perf?.picks?.n ? `${state.perf.picks.n} picks` : ''],
-    ['Yield picks', pk?.bets ? HF.pct(pk.roi, 1) : '—', pk?.bets ? `${pk.bets} con cuota` : 'sin cuotas liquidadas'],
+    ['Yield picks', pk?.bets ? HF.pct(pk.yield, 1) : '—', pk?.bets ? `${pk.bets} con cuota` : 'sin cuotas liquidadas'],
   );
   $('kpis').innerHTML = kp.map(([l, v, s]) => `<div class="panel kpi"><div class="l">${l}</div><div class="v num">${v}</div><div class="text-xs muted">${s}</div></div>`).join('');
 }
@@ -164,6 +197,11 @@ $('date').onchange = (e) => setDate(e.target.value);
 $('prev').onclick = () => shift(-1);
 $('next').onclick = () => shift(1);
 $('collect').onclick = collect;
+if ($('notify')) $('notify').onclick = async () => {
+  $('job').classList.remove('hidden');
+  try { const r = await HF.api('/notify', { method: 'POST', body: JSON.stringify({ date: state.date }) }); $('job-label').textContent = 'Enviado por WhatsApp:\n' + r.text; }
+  catch (e) { $('job-label').textContent = `No se pudo enviar: ${e.message}`; }
+};
 if (HF.standalone) $('import-json').onchange = (e) => importJson(e.target.files[0]);
 
 async function importJson(file) {

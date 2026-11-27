@@ -37,11 +37,11 @@ Tu carpeta `C:\Users\sebas\OneDrive\Escritorio\HTML_Forecaster` tiene cambios tu
 
 1. Abre este enlace en el navegador (descarga un `.zip`):
 
-   https://github.com/JuanDeLeon24/HTML_Forecaster/archive/refs/heads/claude/clever-meitner-8ir4tc.zip
+   https://github.com/JuanDeLeon24/HTML_Forecaster/archive/refs/heads/unificacion-v0.6.zip
 
 2. Ve a **Descargas**, clic derecho en el `.zip` → **Extraer todo…**
 3. Como destino escribe `C:\` y pulsa **Extraer**.
-4. Se crea una carpeta con un nombre largo (`HTML_Forecaster-claude-clever-meitner-8ir4tc`).
+4. Se crea una carpeta con un nombre largo (`HTML_Forecaster-unificacion-v0.6`).
    Cámbiale el nombre a **`HTML_Forecaster`**. Debe quedar en `C:\HTML_Forecaster`.
 
    > ¿Por qué `C:\` y no el Escritorio? El Escritorio está dentro de OneDrive, que intenta sincronizar
@@ -89,6 +89,17 @@ Tu carpeta `C:\Users\sebas\OneDrive\Escritorio\HTML_Forecaster` tiene cambios tu
    - `SCHEDULER_ENABLED=1`: mientras la herramienta esté abierta, cada mañana hace sola el ciclo completo
      y cada 3 horas liquida resultados y reaprende.
 
+   **Si usas football-data.org** (porque Sofascore devuelve 403), cambia también:
+
+   ```text
+   DATA_PROVIDER=football-data
+   FOOTBALL_DATA_API_KEY=tu_clave
+   FOOTBALL_DATA_COMPETITIONS=2021,2016,2014,2002,2019,2015,2001
+   ```
+
+   La clave es gratuita: https://www.football-data.org/client/register (llega al correo). Ojo: ese plan
+   solo da resultados y calendario; sin corners, tarjetas, cuotas ni xG.
+
 3. Guarda (Ctrl+G) y cierra el Bloc de notas.
 
 ## Paso 6 · Comprobar que todo funciona
@@ -97,7 +108,7 @@ Tu carpeta `C:\Users\sebas\OneDrive\Escritorio\HTML_Forecaster` tiene cambios tu
 npm.cmd test
 ```
 
-Al final debe decir `# pass 27` y `# fail 0`. Si algo falla, copia el texto y envíamelo.
+Al final debe decir `# pass 38` y `# fail 0`. Si algo falla, copia el texto y envíamelo.
 
 ## Paso 7 · Crear el acceso directo «Abrir HTML_FORECASTER»
 
@@ -120,6 +131,17 @@ Al final debe decir `# pass 27` y `# fail 0`. Si algo falla, copia el texto y en
 3. Guarda y cierra.
 4. Clic derecho en el archivo `C:\HTML_Forecaster\Abrir_HTML_Forecaster.bat` → **Enviar a** →
    **Escritorio (crear acceso directo)**.
+
+## Paso 7b · Cargar el histórico completo (una sola vez)
+
+```powershell
+npm.cmd run bootstrap
+```
+
+Descarga las temporadas completas (actual y anterior) de tus competiciones. Tarda unos minutos
+(football-data permite 10 peticiones por minuto). Sin este paso cada equipo tiene muy pocos partidos y
+los pronósticos salen con calidad C/D. Si se te olvida, la herramienta lo hace sola en el ciclo diario
+o te muestra el botón «Cargar histórico completo».
 
 ## Paso 8 · Primer análisis
 

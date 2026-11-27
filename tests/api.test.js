@@ -41,6 +41,17 @@ test('integración API: recolectar → pronosticar → consultar todos los endpo
   assert.equal((await dispatch('GET', '/matches', { date: 'no-es-fecha' })).status, 400);
   assert.equal((await dispatch('GET', '/forecasts/x:event:999')).status, 404);
   assert.equal((await dispatch('GET', '/nada')).status, 404);
+  const live = await dispatch('GET', '/live', { date });
+  assert.equal(live.status, 200);
+  assert.equal(live.body.count, 0, 'ningún partido en juego');
+  const csv = (await dispatch('GET', '/export', { type: 'predictions' })).body;
+  assert.match(csv.csv, /^prediccion,pronostico/);
+  assert.match((await dispatch('GET', '/export', { type: 'value' })).body.csv, /^fecha,partido/);
+  const health2 = (await dispatch('GET', '/health')).body;
+  assert.equal(typeof health2.needsBootstrap, 'boolean');
+  const notify = await dispatch('POST', '/notify', {}, { date });
+  assert.equal(notify.status, 500, 'WhatsApp deshabilitado por defecto → error controlado');
+  assert.match(notify.body.error, /WhatsApp/);
   const learn = (await dispatch('POST', '/learn')).body;
   assert.equal(learn.ensemble.updated, false);
 });

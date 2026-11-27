@@ -39,6 +39,7 @@ const HF = {
   /** Monta una página en #root; limpia gráficos anteriores. */
   mount(page) {
     HF.onTheme = null;
+    if (HF.onLeave) { try { HF.onLeave(); } catch { /* nada */ } HF.onLeave = null; }
     HF.charts.forEach((c) => c.destroy());
     HF.charts = [];
     document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === page));
@@ -49,6 +50,8 @@ const HF = {
   },
   charts: [],
   onTheme: null,
+  onLeave: null,
+  health: null,
   /** Tabla ligera con búsqueda, orden por columna y paginación (sustituye a DataTables). */
   table(el, { columns, rows, pageSize = 25, empty = 'Sin registros', sortCol = 0, sortDir = -1 }) {
     const st = { q: '', page: 0, sortCol, sortDir };
@@ -76,7 +79,21 @@ const HF = {
   n(x, d = 2) { return x === null || x === undefined || Number.isNaN(x) ? '—' : Number(x).toFixed(d); },
   time(unix) { return new Date(unix * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); },
   dateTime(unix) { return new Date(unix * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }); },
-  today() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); },
+  /** Zona horaria de la configuración (llega con /health); si no, la del navegador. */
+  tz: null,
+  today() {
+    try { return new Intl.DateTimeFormat('en-CA', { timeZone: HF.tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); } catch { /* zona inválida */ }
+    const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  },
+  /** Descarga un texto como archivo (CSV), en servidor y en el archivo único. */
+  download(filename, text, type = 'text/csv;charset=utf-8') {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type }));
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  },
+  async exportCsv(type) { const r = await HF.api(`/export?type=${type}`); HF.download(r.filename, r.csv); },
   /** Score de confianza 0–100 con nivel A+…D. */
   cBadge(grade, score) { return grade ? `<span class="badge q-${grade === 'A+' ? 'Ap' : grade}" title="Score de confianza ${score ?? ''}/100">${grade}${score !== undefined ? ' · ' + score : ''}</span>` : '—'; },
   qBadge(grade, score) { return grade ? `<span class="badge q-${grade}" title="Calidad del dato ${score ?? ''}/100">${grade}${score !== undefined ? ' · ' + score : ''}</span>` : '—'; },
@@ -98,7 +115,7 @@ const HF = {
     return { text: v('--text'), muted: v('--muted'), border: v('--border'), accent: v('--accent'), home: v('--home'), draw: v('--draw'), away: v('--away'), good: v('--good'), bad: v('--bad') };
   },
   header() {
-    const links = [['index', 'Partidos del día'], ['value', 'Valor'], ['stats', 'Calibración y backtesting'], ['history', 'Historial']];
+    const links = [['index', 'Partidos del día'], ...(HF.transport ? [] : [['live', 'En vivo']]), ['value', 'Valor'], ['stats', 'Calibración y backtesting'], ['history', 'Historial']];
     const el = document.createElement('header');
     el.className = 'topbar';
     el.innerHTML = `<div class="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-4 flex-wrap">
@@ -119,7 +136,9 @@ const HF = {
   },
   refreshHealth() {
     HF.api('/health').then((h) => {
-      document.getElementById('hf-health').textContent = `v${h.version} · ${h.provider} · ${h.counts.matches} partidos · ${h.counts.stats} con estadísticas`;
+      HF.health = h;
+      if (h.timezone) HF.tz = h.timezone;
+      document.getElementById('hf-health').textContent = `v${h.version} · ${h.provider}${h.fallbackProvider ? ' → ' + h.fallbackProvider : ''} · ${h.counts.matches} partidos · ${h.counts.stats} con estadísticas`;
     }).catch(() => { document.getElementById('hf-health').textContent = 'API no disponible'; });
   },
 };

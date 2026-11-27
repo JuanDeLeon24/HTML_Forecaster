@@ -302,6 +302,21 @@ function createRepositories(db) {
     }
   }
 
+  /** Mantiene aceptadas solo las mejores (EV) hasta el límite diario de apuestas y de stake. */
+  function applyDailyExposure(fromSec, toSec, { maxBets, maxStake }) {
+    const rows = db.all(`SELECT v.id, v.stake, v.expected_value FROM value_bets v JOIN matches m ON m.id=v.match_id
+      JOIN forecasts f ON f.id=v.forecast_id AND f.is_latest=1
+      WHERE v.accepted=1 AND v.outcome IS NULL AND m.start_time >= ? AND m.start_time < ? ORDER BY v.expected_value DESC`, fromSec, toSec);
+    let n = 0, stake = 0, cut = 0;
+    for (const r of rows) {
+      if (n + 1 > maxBets || stake + r.stake > maxStake + 1e-9) {
+        db.run("UPDATE value_bets SET accepted=0, stake=0, discard_reason=? WHERE id=?", `límite de exposición diaria (${maxBets} apuestas / ${maxStake} u)`, r.id);
+        cut++;
+      } else { n++; stake += r.stake; }
+    }
+    return { accepted: n, stake: Math.round(stake * 100) / 100, cut };
+  }
+
   function openValueBets(matchId) { return db.all('SELECT * FROM value_bets WHERE match_id=? AND outcome IS NULL', matchId); }
   function settleValueBet(id, outcome, profit) { db.run('UPDATE value_bets SET outcome=?, profit=? WHERE id=?', outcome, profit, id); }
 
@@ -388,11 +403,12 @@ function createRepositories(db) {
   }
 
   return {
+    tx: (fn) => db.tx(fn),
     upsertTeam, upsertTournament, upsertMatch, saveStats, saveIncidents, linkH2H, saveStandings, saveOdds,
     getMatch, matchesBetween, teamHistory, h2hHistory, hasStats, allFinishedMatches, goalBaseline, xgBaseline, standingFor,
     oddsFor, incidentsFor, statsFor, saveForecast, latestForecast, forecastsBetween, predictionsForForecast,
     openPredictionMatches, openPredictionsFor, settlePrediction, setPostAnalysis, settledPredictions, history,
-    picksForForecasts, settledLambdas, settledForecastOutputs, saveModelPredictions, saveValueBets, openValueBets, settleValueBet,
+    picksForForecasts, settledLambdas, settledForecastOutputs, saveModelPredictions, saveValueBets, openValueBets, settleValueBet, applyDailyExposure,
     valueBetsBetween, settledValueBets, modelPredictionsFor, saveEloSnapshot, recordTraining, recordCalibration, recordBacktest, trainingHistory,
     latestCalibration, tournamentsList, teamsSearch, getParam, setParam, allParams, startRun, finishRun, lastRuns, counts,
   };
