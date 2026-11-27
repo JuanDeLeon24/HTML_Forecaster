@@ -1,6 +1,6 @@
 {
   "name": "html-forecaster",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Plataforma de análisis y predicción probabilística de fútbol basada en evidencia estadística (Poisson, Dixon-Coles, Elo, modelo ponderado).",
   "main": "backend/server.js",
   "private": true,

@@ -14,7 +14,25 @@ class ApiFootballProvider extends BaseProvider {
   }
   get name() { return 'api-football'; }
   get requestCount() { return this.http.requestCount; }
-  get(path) { return this.http.getJson(`${this.baseUrl}${path}`); }
+  /**
+   * API-Football devuelve HTTP 200 incluso cuando falla (cuota agotada, plan sin acceso,
+   * parámetros inválidos): el error viaja en `errors`. Si no se lanza, el failover nunca
+   * se activa y la recolección termina con 0 partidos como si fuera un día sin fútbol.
+   */
+  async get(path) {
+    const json = await this.http.getJson(`${this.baseUrl}${path}`);
+    const raw = json?.errors;
+    const messages = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.values(raw) : [];
+    const clean = messages.map((m) => String(m ?? '').trim()).filter(Boolean);
+    if (clean.length) {
+      const text = clean.join('; ');
+      const err = new Error(`API-Football: ${text}`);
+      err.provider = 'api-football';
+      err.code = /request limit|rate limit|too many requests/i.test(text) ? 'QUOTA' : 'PROVIDER';
+      throw err;
+    }
+    return json;
+  }
 
   _mapTeam(t) { return { id: `api-football:team:${t.id}`, name: t.name, shortName: t.code ?? null, country: t.country ?? null }; }
   _mapFixture(f) {
@@ -148,12 +166,15 @@ class ApiFootballProvider extends BaseProvider {
     const seen = new Set();
     return out.filter((o) => (seen.has(`${o.market}|${o.selection}|${o.line}`) ? false : (seen.add(`${o.market}|${o.selection}|${o.line}`), true)));
   }
-  defaultCompetitions() { return config.apiFootball.leagues; }
+  defaultCompetitions() { return config.apiFootball.leagues.map((id) => `api-football:comp:${id}`); }
   async getRecentSeasons(_competitionId, count = 2) {
     const start = config.apiFootball.seasonStart;
     return Array.from({ length: count }, (_, i) => ({ id: String(start - i), name: `${start - i}/${start - i + 1}` }));
   }
   async getSeasonMatches(competitionId, seasonId) {
+    if (String(competitionId).includes(':') && !String(competitionId).startsWith('api-football:')) {
+      throw new Error(`API-Football no puede cargar la competición ${competitionId} (ID de otro proveedor)`);
+    }
     const id = String(competitionId).split(':').pop();
     const json = await this.get(`/fixtures?league=${id}&season=${seasonId}`);
     return (json?.response ?? []).map((f) => this._mapFixture(f));

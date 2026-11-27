@@ -37,15 +37,19 @@ class FootballDataProvider extends BaseProvider {
 
   async getScheduledMatches(date) {
     const out = [];
+    const errors = [];
     // football-data usa sus propios IDs de competición (no los de Sofascore)
     for (const id of config.footballData.competitions) {
       try {
         const json = await this.get(`/competitions/${id}/matches?dateFrom=${date}&dateTo=${date}`);
         out.push(...(json?.matches ?? []).map((m) => this._mapMatch(m)));
       } catch (e) {
-        // ignore competition errors
+        errors.push(`${id}: ${e.message}`);
       }
     }
+    // Si ninguna competición respondió, no es un día sin fútbol: es un fallo que debe
+    // activar el respaldo o mostrarse al usuario (429, 403, red...).
+    if (!out.length && errors.length) throw new Error(`Football-Data sin respuesta: ${errors[0]}`);
     // dedup by id
     const seen = new Set();
     return out.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)));
@@ -73,7 +77,7 @@ class FootballDataProvider extends BaseProvider {
     }));
   }
   async getOdds() { return []; }
-  defaultCompetitions() { return config.footballData.competitions; }
+  defaultCompetitions() { return config.footballData.competitions.map((id) => `football-data:comp:${id}`); }
   /** Temporadas por año de inicio (las ligas europeas empiezan en julio/agosto). */
   async getRecentSeasons(_competitionId, count = 2) {
     const d = new Date();
@@ -81,6 +85,9 @@ class FootballDataProvider extends BaseProvider {
     return Array.from({ length: count }, (_, i) => ({ id: String(start - i), name: `${start - i}/${start - i + 1}` }));
   }
   async getSeasonMatches(competitionId, seasonId) {
+    if (String(competitionId).includes(':') && !String(competitionId).startsWith('football-data:')) {
+      throw new Error(`Football-Data no puede cargar la competición ${competitionId} (ID de otro proveedor)`);
+    }
     const id = String(competitionId).split(':').pop();
     const json = await this.get(`/competitions/${id}/matches?season=${seasonId}`);
     return (json?.matches ?? []).map((m) => this._mapMatch(m));

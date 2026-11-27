@@ -108,6 +108,12 @@ function createRepositories(db) {
     return db.all(`${MATCH_SELECT} WHERE m.start_time >= ? AND m.start_time < ? ORDER BY m.start_time`, fromSec, toSec);
   }
 
+  /** Timestamps de partidos en un rango (para sugerir la fecha más cercana con datos). */
+  function matchTimesBetween(fromSec, toSec) {
+    return db.all('SELECT start_time FROM matches WHERE start_time >= ? AND start_time < ? ORDER BY start_time', fromSec, toSec)
+      .map((r) => r.start_time);
+  }
+
   /** Últimos partidos terminados de un equipo antes de `beforeSec`, con estadísticas si existen. */
   function teamHistory(teamId, beforeSec, limit) {
     return db.all(`SELECT m.*, s.available AS stats_available,
@@ -405,7 +411,7 @@ function createRepositories(db) {
   return {
     tx: (fn) => db.tx(fn),
     upsertTeam, upsertTournament, upsertMatch, saveStats, saveIncidents, linkH2H, saveStandings, saveOdds,
-    getMatch, matchesBetween, teamHistory, h2hHistory, hasStats, allFinishedMatches, goalBaseline, xgBaseline, standingFor,
+    getMatch, matchesBetween, matchTimesBetween, teamHistory, h2hHistory, hasStats, allFinishedMatches, goalBaseline, xgBaseline, standingFor,
     oddsFor, incidentsFor, statsFor, saveForecast, latestForecast, forecastsBetween, predictionsForForecast,
     openPredictionMatches, openPredictionsFor, settlePrediction, setPostAnalysis, settledPredictions, history,
     picksForForecasts, settledLambdas, settledForecastOutputs, saveModelPredictions, saveValueBets, openValueBets, settleValueBet, applyDailyExposure,

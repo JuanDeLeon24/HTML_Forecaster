@@ -4,7 +4,7 @@
  * El motor de aprendizaje puede sobrescribirlos (tabla model_params) cuando hay muestra suficiente.
  */
 module.exports = {
-  version: '0.6.0',
+  version: '0.6.1',
   // Nivel 1 – modelo ponderado (suma = 1)
   weightedFactors: { form: 0.35, h2h: 0.2, home: 0.1, attack: 0.2, defense: 0.15 },
   weightedSlope: 3.0,

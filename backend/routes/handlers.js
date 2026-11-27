@@ -11,7 +11,7 @@ const { getProvider } = require('../providers');
 const { refreshLive } = require('../collectors/live');
 const { analyzeLive } = require('../engine/live');
 const { sendWhatsApp, buildTopMessage } = require('../lib/whatsapp');
-const { isIsoDate, today, nowSec } = require('../lib/dates');
+const { isIsoDate, today, nowSec, localDate, shiftDate } = require('../lib/dates');
 const { buildRankings } = require('../engine/ranking');
 const { jointProbability } = require('../engine/combinations');
 const { fullReport, monitoring } = require('../validation/metrics');
@@ -32,6 +32,26 @@ const dateOf = (q, b) => {
 };
 const fromOf = (d) => (d && isIsoDate(d) ? services.dayRange(d)[0] : undefined);
 const toOf = (d) => (d && isIsoDate(d) ? services.dayRange(d)[1] : undefined);
+
+/**
+ * Fecha cercana (±21 días) que sí tiene partidos guardados, para no dejar la pantalla
+ * vacía cuando el día elegido no tiene fútbol. En empate gana la fecha futura.
+ */
+function nearestDateWithMatches(repos, date) {
+  const [from] = services.dayRange(shiftDate(date, -21));
+  const [, to] = services.dayRange(shiftDate(date, 22));
+  const counts = new Map();
+  for (const t of repos.matchTimesBetween(from, to)) {
+    const d = localDate(t);
+    counts.set(d, (counts.get(d) || 0) + 1);
+  }
+  const distance = (d) => Math.abs(Date.parse(d) - Date.parse(date));
+  const candidates = [...counts.entries()]
+    .filter(([d]) => d !== date)
+    .map(([d, count]) => ({ date: d, count }))
+    .sort((a, b) => distance(a.date) - distance(b.date) || (a.date < b.date ? 1 : -1));
+  return candidates[0] ?? null;
+}
 
 const routes = [
   ['GET', '/health', () => {
@@ -58,7 +78,7 @@ const routes = [
         } : null,
       };
     });
-    return { date, timezone: config.timezone, count: matches.length, matches };
+    return { date, timezone: config.timezone, count: matches.length, matches, nearest: nearestDateWithMatches(repos, date) };
   }],
 
   ['GET', '/forecasts/:matchId', ({ params }) => {

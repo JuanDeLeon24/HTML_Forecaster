@@ -24,6 +24,9 @@ test('integración API: recolectar → pronosticar → consultar todos los endpo
   assert.ok(health.body.counts.forecasts >= 6);
   const matches = (await dispatch('GET', '/matches', { date })).body;
   assert.equal(matches.count, 6);
+  const empty = (await dispatch('GET', '/matches', { date: shiftDate(date, -5) })).body;
+  assert.equal(empty.count, 0);
+  assert.deepEqual(empty.nearest, { date, count: 6 }, 'sugiere el día cercano con partidos');
   const id = matches.matches[0].id;
   const detail = await dispatch('GET', `/forecasts/${encodeURIComponent(id)}`);
   assert.equal(detail.status, 200);

@@ -19,8 +19,10 @@ async function collectStats(matches, { provider, repos }) {
     if (m.status !== 'finished' || repos.hasStats(m.id)) continue;
     try {
       const stats = await provider.getMatchStats(m.id);
+      // Se guarda también `available:false` para no repetir la consulta, pero solo
+      // se cuenta como estadística nueva si el proveedor aportó datos reales.
       repos.saveStats(m.id, stats);
-      fetched += 1;
+      if (stats?.available) fetched += 1;
     } catch (err) {
       log.warn('No se pudieron obtener estadísticas', { match: m.id, err: err.message });
     }

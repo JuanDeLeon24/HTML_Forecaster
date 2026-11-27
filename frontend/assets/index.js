@@ -1,7 +1,7 @@
 /* Dashboard principal: partidos del día + rankings Top 10 + recolección. */
 HF.pages.index = (root) => {
 const $ = (id) => document.getElementById(id);
-const state = { date: HF.param('date') || HF.today(), matches: [], rankings: null, tab: 'confidence' };
+const state = { date: HF.param('date') || HF.today(), matches: [], rankings: null, tab: 'confidence', suggestion: null };
 root.innerHTML = `
   <section class="flex flex-wrap items-end gap-3">
     <div>
@@ -25,6 +25,7 @@ root.innerHTML = `
     2) Abre <a href="https://www.sofascore.com" target="_blank" rel="noopener">www.sofascore.com</a> y pulsa ese marcador; descargará <code>sofascore_AAAA-MM-DD.json</code>.
     3) Vuelve aquí y pulsa <b>«Importar datos (.json)»</b>.</div>` : ''}
   <div id="bootstrap-banner"></div>
+  <div id="date-hint"></div>
   <div id="job" class="hidden panel panel-b space-y-2"><div class="text-sm" id="job-label"></div><div class="progress"><div id="job-bar" style="width:0"></div></div></div>
   <section class="grid grid-cols-2 md:grid-cols-4 gap-3" id="kpis"></section>
   <section class="panel">
@@ -59,8 +60,8 @@ async function load() {
   $('matches').innerHTML = '<div class="empty">Cargando…</div>';
   try {
     const [m, r, perf, health] = await Promise.all([HF.api(`/matches?date=${state.date}`), HF.api(`/rankings?date=${state.date}`), HF.api('/performance').catch(() => null), HF.api('/health').catch(() => null)]);
-    state.matches = m.matches; state.rankings = r; state.perf = perf;
-    renderBootstrap(health);
+    state.matches = m.matches; state.rankings = r; state.perf = perf; state.suggestion = m.nearest || null;
+    renderBootstrap(health); renderDateHint();
     renderKpis(); renderTabs(); renderRanking(); renderMatches();
   } catch (e) {
     $('matches').innerHTML = `<div class="empty">Error: ${HF.esc(e.message)}</div>`;
@@ -75,6 +76,17 @@ function renderBootstrap(h) {
     <button class="btn" id="bootstrap">Cargar histórico completo</button></div>` : '';
   const b = $('bootstrap');
   if (b) b.onclick = () => runJob('/bootstrap', 'Cargando histórico', (res) => `Histórico cargado: ${res.saved} partidos guardados de ${res.matches} (${res.seasons} temporadas, ${res.errors.length} errores). Ahora pulsa «Recolectar y pronosticar».`);
+}
+
+/** Si el día elegido no tiene partidos, ofrece el día más cercano que sí tiene. */
+function renderDateHint() {
+  const el = $('date-hint');
+  const s = state.suggestion;
+  if (!s || state.matches.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="warn-box flex flex-wrap items-center gap-3">
+    <div>No hay partidos guardados el <b>${HF.dateLabel(state.date)}</b>. El día más cercano con datos es el <b>${HF.dateLabel(s.date)}</b> (${s.count} partido${s.count === 1 ? '' : 's'}).</div>
+    <button class="btn" id="go-suggested">Ver ${HF.dateLabel(s.date)}</button></div>`;
+  $('go-suggested').onclick = () => setDate(s.date);
 }
 
 async function runJob(path, labelText, done) {
@@ -191,7 +203,13 @@ async function collect() {
     $('job-label').textContent = `Error: ${e.message}`;
   }
   $('collect').disabled = false;
-  load();
+  await load();
+  // Si el día elegido no tenía partidos, mostrar el más cercano con datos en vez de una pantalla vacía.
+  if (!state.matches.length && state.suggestion) {
+    const s = state.suggestion;
+    $('job-label').textContent += ` No había partidos el ${HF.dateLabel(state.date)}; te muestro el ${HF.dateLabel(s.date)} (${s.count} partido${s.count === 1 ? '' : 's'}).`;
+    setDate(s.date);
+  }
 }
 
 $('date').onchange = (e) => setDate(e.target.value);

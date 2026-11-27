@@ -33,7 +33,7 @@ Tu carpeta `C:\Users\sebas\OneDrive\Escritorio\HTML_Forecaster` tiene cambios tu
 1. En el Explorador de archivos, clic derecho sobre la carpeta → **Cambiar nombre** →
    `HTML_Forecaster_mis_cambios`.
 
-## Paso 3 · Descargar la última versión (v0.4)
+## Paso 3 · Descargar la última versión (v0.6.1)
 
 1. Abre este enlace en el navegador (descarga un `.zip`):
 

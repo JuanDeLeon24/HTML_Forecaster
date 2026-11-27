@@ -79,6 +79,7 @@ const HF = {
   n(x, d = 2) { return x === null || x === undefined || Number.isNaN(x) ? '—' : Number(x).toFixed(d); },
   time(unix) { return new Date(unix * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); },
   dateTime(unix) { return new Date(unix * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }); },
+  dateLabel(iso) { const [y, m, d] = String(iso || '').split('-'); return y && m && d ? `${d}/${m}/${y}` : String(iso || ''); },
   /** Zona horaria de la configuración (llega con /health); si no, la del navegador. */
   tz: null,
   today() {

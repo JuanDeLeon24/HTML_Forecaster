@@ -21,13 +21,25 @@ class FailoverProvider extends BaseProvider {
 
   async _try(method, args) {
     let lastErr;
-    for (const p of this.providers) {
+    for (const p of this._order(args)) {
       try { return await p[method](...args); } catch (err) {
         lastErr = err;
         log.warn(`Proveedor ${p.name} falló en ${method}; se intenta el siguiente`, { error: err.message });
       }
     }
     throw lastErr;
+  }
+
+  /**
+   * Los IDs llevan el proveedor en el prefijo (`api-football:team:33`). Si el partido vino
+   * del respaldo, sus llamadas posteriores deben ir a ese mismo proveedor: usar el ID de
+   * API-Football contra Football-Data devolvería el equipo equivocado o un 404.
+   */
+  _order(args) {
+    const text = JSON.stringify(args);
+    const idx = this.providers.findIndex((p) => text.includes(`${p.name}:`));
+    if (idx <= 0) return this.providers;
+    return [this.providers[idx], ...this.providers.filter((_, i) => i !== idx)];
   }
 
   async getScheduledMatches(...a) { return this._try('getScheduledMatches', a); }
@@ -39,9 +51,12 @@ class FailoverProvider extends BaseProvider {
   async getStandings(...a) { return this._try('getStandings', a); }
   async getOdds(...a) { return this._try('getOdds', a); }
   async getLineups(...a) { return this._try('getLineups', a); }
-  defaultCompetitions() { return this.providers[0].defaultCompetitions(); }
-  async getRecentSeasons(...a) { return this.providers[0].getRecentSeasons(...a); }
-  async getSeasonMatches(...a) { return this.providers[0].getSeasonMatches(...a); }
+  /** Unión de competiciones: si el principal no responde, el respaldo carga las suyas. */
+  defaultCompetitions() {
+    return [...new Set(this.providers.flatMap((p) => p.defaultCompetitions()))];
+  }
+  async getRecentSeasons(...a) { return this._try('getRecentSeasons', a); }
+  async getSeasonMatches(...a) { return this._try('getSeasonMatches', a); }
 }
 
 module.exports = { FailoverProvider };

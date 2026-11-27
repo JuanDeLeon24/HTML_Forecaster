@@ -65,6 +65,11 @@ const config = {
     h2hStatsDepth: Math.min(int(process.env.H2H_STATS_DEPTH, 5), 20),
     tournaments: list(process.env.TOURNAMENTS).map(Number),
     maxMatches: int(process.env.MAX_MATCHES, 0),
+    // Presupuesto por ciclo: el plan gratuito de API-Football permite 100 peticiones/día.
+    maxRequestsPerRun: Math.max(int(process.env.MAX_REQUESTS_PER_RUN, 85), 10),
+    maxStatsPerRun: Math.max(int(process.env.MAX_STATS_PER_RUN, 25), 0),
+    // Si el equipo ya tiene un partido en la base más reciente que esto, no se repite su histórico.
+    teamHistoryMaxAgeDays: Math.max(int(process.env.TEAM_HISTORY_MAX_AGE_DAYS, 3), 0),
     // Carga inicial del histórico: temporadas completas a descargar por competición (actual + anteriores)
     bootstrapSeasons: Math.min(Math.max(int(process.env.BOOTSTRAP_SEASONS, 2), 1), 5),
   },

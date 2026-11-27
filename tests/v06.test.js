@@ -32,7 +32,7 @@ test('football-data: mapeo, temporadas por año de inicio y temporada completa',
   assert.equal(ms[0].status, 'finished');
   assert.equal(ms[0].homeGoals, 2);
   assert.equal(ms[1].homeGoals, null, 'sin marcador si no ha terminado');
-  assert.deepEqual(p.defaultCompetitions(), config.footballData.competitions);
+  assert.deepEqual(p.defaultCompetitions(), config.footballData.competitions.map((id) => `football-data:comp:${id}`));
 });
 
 test('filtro de competiciones por proveedor: football-data no usa los IDs de Sofascore', () => {
@@ -61,6 +61,31 @@ test('failover: si el principal falla se usa el respaldo', async () => {
   const f = new FailoverProvider([new Bad(), new Good()]);
   assert.deepEqual(await f.getScheduledMatches('2026-11-27'), [{ id: 'ok' }]);
   await assert.rejects(new FailoverProvider([new Bad()]).getScheduledMatches('x'));
+});
+
+test('API-Football: la cuota agotada lanza error para que actúe el respaldo', async () => {
+  const http = fakeHttp({ '/fixtures?date=': { response: [], errors: { requests: 'You have reached the request limit for the day, go to dashboard' } } });
+  const p = new ApiFootballProvider({ apiKey: 'x', http });
+  await assert.rejects(() => p.getScheduledMatches('2026-11-27'), (e) => e.code === 'QUOTA' && /request limit/i.test(e.message));
+});
+
+test('failover: cada llamada usa el proveedor dueño del ID (no mezcla equipos)', async () => {
+  const calls = [];
+  class A extends BaseProvider {
+    get name() { return 'api-football'; }
+    async getScheduledMatches() { throw new Error('cuota agotada'); }
+    async getTeamRecentMatches(id) { calls.push(['api', id]); return [{ id: 'api' }]; }
+  }
+  class B extends BaseProvider {
+    get name() { return 'football-data'; }
+    async getScheduledMatches() { return [{ id: 'football-data:event:1' }]; }
+    async getTeamRecentMatches(id) { calls.push(['fd', id]); return [{ id: 'fd' }]; }
+  }
+  const f = new FailoverProvider([new A(), new B()]);
+  assert.deepEqual(await f.getScheduledMatches('2026-11-27'), [{ id: 'football-data:event:1' }]);
+  assert.deepEqual(await f.getTeamRecentMatches('football-data:team:2', 5), [{ id: 'fd' }]);
+  assert.deepEqual(await f.getTeamRecentMatches('api-football:team:9', 5), [{ id: 'api' }]);
+  assert.deepEqual(calls, [['fd', 'football-data:team:2'], ['api', 'api-football:team:9']]);
 });
 
 test('carga inicial del histórico: guarda temporadas completas y rechaza datos inválidos', async () => {
