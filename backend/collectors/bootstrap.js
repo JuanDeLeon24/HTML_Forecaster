@@ -15,7 +15,7 @@ async function runBootstrap({ provider, repos, competitions = null, seasons = co
   const runId = repos.startRun('bootstrap');
   const startReq = provider.requestCount;
   const comps = (competitions && competitions.length ? competitions : provider.defaultCompetitions()) || [];
-  const summary = { competitions: comps.length, seasons: 0, matches: 0, saved: 0, rejected: 0, errors: [] };
+  const summary = { competitions: comps.length, seasons: 0, matches: 0, saved: 0, rejected: 0, skipped: 0, errors: [] };
   if (!comps.length) {
     const msg = 'No hay competiciones configuradas para este proveedor (TOURNAMENTS / FOOTBALL_DATA_COMPETITIONS / API_FOOTBALL_LEAGUES).';
     repos.finishRun(runId, 'error', { summary, error: msg });
@@ -35,6 +35,9 @@ async function runBootstrap({ provider, repos, competitions = null, seasons = co
         summary.matches += matches.length;
         const save = () => {
           for (const m of matches) {
+            // El histórico solo aporta partidos terminados; los programados ya los trae
+            // la recolección diaria y guardarlos aquí duplicaría la misma fecha con otro ID.
+            if (m.status !== 'finished' || m.homeGoals === null || m.awayGoals === null) { summary.skipped += 1; continue; }
             if (repos.upsertMatch(m)) summary.saved += 1; else summary.rejected += 1;
           }
         };
