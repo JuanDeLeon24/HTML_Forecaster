@@ -20,6 +20,8 @@ class Database {
     this.conn.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
     this.conn.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
     this.cache = new Map();
+    const { applyMigrations } = require('./migrations');
+    applyMigrations(this);
     log.debug('Base de datos abierta', { file });
   }
 
@@ -33,6 +35,7 @@ class Database {
   }
 
   all(sql, ...params) { return this.stmt(sql).all(...params).map(plain); }
+  exec(sql) { return this.conn.exec(sql); }
   get(sql, ...params) { const r = this.stmt(sql).get(...params); return r ? plain(r) : null; }
   run(sql, ...params) { return this.stmt(sql).run(...params); }
 

@@ -23,8 +23,13 @@ const config = {
   logFile: path.resolve(ROOT, process.env.LOG_FILE || './logs/app.log'),
 
   provider: process.env.DATA_PROVIDER || 'sofascore',
+  fallbackProvider: process.env.FALLBACK_PROVIDER || null,
   sofascore: {
     baseUrl: process.env.SOFASCORE_BASE_URL || 'https://api.sofascore.com/api/v1',
+  },
+  footballData: {
+    baseUrl: process.env.FOOTBALL_DATA_BASE_URL || 'https://api.football-data.org/v4',
+    apiKey: process.env.FOOTBALL_DATA_API_KEY || null,
   },
   http: {
     minIntervalMs: int(process.env.REQUEST_INTERVAL_MS, 450),

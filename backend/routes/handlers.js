@@ -6,10 +6,13 @@
  */
 const config = require('../config');
 const services = require('../services');
+const { getProvider } = require('../providers');
 const jobs = require('../lib/jobs');
 const { isIsoDate, today, nowSec } = require('../lib/dates');
 const { buildRankings } = require('../engine/ranking');
 const { jointProbability } = require('../engine/combinations');
+const { refreshLive } = require('../collectors/live');
+const { analyzeLive } = require('../engine/live');
 const { fullReport } = require('../validation/metrics');
 const { label } = require('../engine/markets');
 const { getModelParams } = require('../learning/params');
@@ -27,6 +30,20 @@ const fromOf = (d) => (d && isIsoDate(d) ? services.dayRange(d)[0] : undefined);
 const toOf = (d) => (d && isIsoDate(d) ? services.dayRange(d)[1] : undefined);
 
 const routes = [
+  ['GET', '/live', async ({ query }) => {
+    const date = dateOf(query);
+    const repos = services.getRepos();
+    const provider = getProvider();
+    const r = await refreshLive({ provider, repos, date });
+    const matches = r.live.map((m) => {
+      const stats = repos.statsFor(m.id);
+      const incidents = repos.incidentsFor(m.id);
+      const forecast = repos.latestForecast(m.id);
+      return { match: m, stats, incidents, forecast, live: analyzeLive(m, stats, incidents) };
+    });
+    return { date, count: matches.length, refreshed: r.summary.refreshed, matches };
+  }],
+
   ['GET', '/health', () => {
     const repos = services.getRepos();
     return { ok: true, version: config.model.version, provider: config.provider, timezone: config.timezone, standalone: !!config.standalone, counts: repos.counts(), lastRuns: repos.lastRuns(5), now: nowSec() };
@@ -106,6 +123,22 @@ const routes = [
   }],
 
   ['GET', '/teams', ({ query }) => services.getRepos().teamsSearch(String(query.q || ''))],
+
+  ['GET', '/export', ({ query }) => {
+    const repos = services.getRepos();
+    const type = query.type || 'predictions';
+    let csv = '';
+    if (type === 'history') {
+      const items = repos.history({});
+      csv = 'forecast_id,match_id,start_time,match,score,pick,probability,outcome,model_version\n' +
+        items.map((i) => [i.forecast_id, i.match_id, i.start_time, `"${i.home_name} vs ${i.away_name}"`, i.home_goals !== null ? `${i.home_goals}-${i.away_goals}` : '', i.pick?.label ?? '', i.pick?.probability ?? '', i.pick?.outcome ?? '', i.model_version].join(',')).join('\n');
+    } else {
+      const rows = repos.settledPredictions({});
+      csv = 'prediction_id,forecast_id,match_id,market,selection,line,probability,outcome,odds,is_pick\n' +
+        rows.map((r) => [r.id, r.forecast_id, r.match_id, r.market, r.selection, r.line, r.probability, r.outcome, r.odds ?? '', r.is_pick].join(',')).join('\n');
+    }
+    return { type, csv };
+  }],
 
   ['GET', '/model', () => {
     const repos = services.getRepos();

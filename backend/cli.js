@@ -26,7 +26,7 @@ async function main() {
   let result;
   switch (cmd) {
     case 'collect': result = { collected: await services.collect(date, progress), forecasted: services.forecast(date) }; break;
-    case 'forecast': result = services.forecast(date); break;
+    case 'forecast': result = services.forecast(date, { includeStarted: process.argv.includes('--include-started') }); break;
     case 'settle': result = await services.settle(); break;
     case 'learn': result = services.learn(); break;
     case 'daily': result = await services.daily(date, progress); break;

@@ -67,3 +67,4 @@ table.dataTable tbody tr, table.dataTable.stripe tbody tr.odd, table.dataTable.d
 table.dataTable.display tbody tr.odd > .sorting_1, table.dataTable.display tbody tr.even > .sorting_1 { background: transparent !important; box-shadow: none !important; }
 table.dataTable tbody tr > * { box-shadow: none !important; }
 .scroll-x > table.t { min-width: 680px; }
+@media (max-width: 390px) { .scroll-x > table.t { min-width: 100%; } body { font-size: 13px; } }

@@ -7,19 +7,27 @@
  */
 const config = require('../config');
 const { SofascoreProvider } = require('./sofascore/client');
+const { FootballDataProvider } = require('./footballData/client');
+const { FailoverProvider } = require('./fallback');
 
 const registry = {
   sofascore: () => new SofascoreProvider(),
+  'football-data': () => new FootballDataProvider(),
   // 'api-football': () => new ApiFootballProvider(),   // futuro
-  // 'football-data': () => new FootballDataProvider(), // futuro
 };
 
 let current = null;
 function getProvider(name = config.provider) {
-  if (current && current.name === name) return current;
+  if (current && current.name === name && !config.fallbackProvider) return current;
   const factory = registry[name];
   if (!factory) throw new Error(`Proveedor desconocido: ${name}. Disponibles: ${Object.keys(registry).join(', ')}`);
-  current = factory();
+  const primary = factory();
+  if (config.fallbackProvider && registry[config.fallbackProvider]) {
+    const fallback = registry[config.fallbackProvider]();
+    current = new FailoverProvider([primary, fallback]);
+    return current;
+  }
+  current = primary;
   return current;
 }
 function setProvider(p) { current = p; }

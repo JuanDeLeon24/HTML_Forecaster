@@ -35,11 +35,32 @@ CREATE TABLE IF NOT EXISTS matches (
   away_goals      INTEGER,
   home_goals_ht   INTEGER,
   away_goals_ht   INTEGER,
+  referee         TEXT,
   updated_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_matches_time ON matches(start_time);
 CREATE INDEX IF NOT EXISTS idx_matches_home ON matches(home_team_id, start_time);
 CREATE INDEX IF NOT EXISTS idx_matches_away ON matches(away_team_id, start_time);
+
+CREATE TABLE IF NOT EXISTS match_lineups (
+  match_id TEXT NOT NULL REFERENCES matches(id),
+  side TEXT NOT NULL,
+  player TEXT NOT NULL,
+  position TEXT,
+  is_starter INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (match_id, side, player)
+);
+
+CREATE TABLE IF NOT EXISTS odds_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  match_id TEXT NOT NULL,
+  market TEXT NOT NULL,
+  selection TEXT NOT NULL,
+  line REAL NOT NULL DEFAULT 0,
+  decimal_odds REAL NOT NULL,
+  source TEXT,
+  captured_at INTEGER NOT NULL
+);
 
 -- available = 0 significa "el proveedor no tiene estadísticas" (no se reintenta)
 CREATE TABLE IF NOT EXISTS match_stats (
@@ -144,6 +165,17 @@ CREATE TABLE IF NOT EXISTS model_params_history (
   sample_size INTEGER,
   metric_json TEXT,
   created_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ml_training_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  model_name TEXT NOT NULL,
+  training_samples INTEGER,
+  accuracy REAL,
+  logloss REAL,
+  calibration_score REAL,
+  started_at INTEGER,
+  finished_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS collection_runs (

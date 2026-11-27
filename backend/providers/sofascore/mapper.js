@@ -47,6 +47,7 @@ function mapEvent(e) {
     awayGoals: finished ? regulationScore(e.awayScore) : null,
     homeGoalsHt: finished && Number.isFinite(e.homeScore?.period1) ? e.homeScore.period1 : null,
     awayGoalsHt: finished && Number.isFinite(e.awayScore?.period1) ? e.awayScore.period1 : null,
+    referee: e.referee?.name ?? null,
   };
 }
 
@@ -131,4 +132,14 @@ function mapOdds(json) {
   return out.filter((o) => o.market !== '1X2' || ['1', 'X', '2'].includes(o.selection));
 }
 
-module.exports = { ids, mapEvent, mapStatistics, mapIncidents, mapStandings, mapOdds, fractionalToDecimal };
+function mapLineups(json) {
+  const out = { home: [], away: [] };
+  for (const side of ['home', 'away']) {
+    for (const p of json?.[side]?.players ?? []) {
+      out[side].push({ player: p.player?.name ?? null, position: p.position ?? null, isStarter: !!p.substitute === false });
+    }
+  }
+  return out;
+}
+
+module.exports = { ids, mapEvent, mapStatistics, mapIncidents, mapStandings, mapOdds, mapLineups, fractionalToDecimal };

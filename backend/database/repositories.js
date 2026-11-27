@@ -4,6 +4,7 @@
  * objetos canónicos independientes del proveedor de datos.
  */
 const { nowSec } = require('../lib/dates');
+const { validateMatch, validateStats, validateOdds } = require('../lib/validate');
 
 const STAT_COLS = ['corners', 'yellow', 'red', 'shots', 'sot', 'possession', 'fouls', 'xg'];
 
@@ -25,23 +26,27 @@ function createRepositories(db) {
   }
 
   function upsertMatch(m) {
+    validateMatch(m);
     upsertTeam({ ...m.home, provider: m.provider });
     upsertTeam({ ...m.away, provider: m.provider });
     if (m.tournament) upsertTournament({ ...m.tournament, provider: m.provider });
     db.run(`INSERT INTO matches(id, provider, provider_ref, tournament_id, tournament_name, season_id, round, start_time,
-              status, home_team_id, away_team_id, home_goals, away_goals, home_goals_ht, away_goals_ht, updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              status, home_team_id, away_team_id, home_goals, away_goals, home_goals_ht, away_goals_ht, referee, updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET provider_ref=COALESCE(excluded.provider_ref, matches.provider_ref),
               tournament_id=excluded.tournament_id, tournament_name=excluded.tournament_name,
               season_id=excluded.season_id, round=excluded.round, start_time=excluded.start_time,
               status=excluded.status, home_goals=excluded.home_goals, away_goals=excluded.away_goals,
-              home_goals_ht=excluded.home_goals_ht, away_goals_ht=excluded.away_goals_ht, updated_at=excluded.updated_at`,
+              home_goals_ht=excluded.home_goals_ht, away_goals_ht=excluded.away_goals_ht,
+              referee=COALESCE(excluded.referee, matches.referee), updated_at=excluded.updated_at`,
     m.id, m.provider, m.providerRef ?? null, m.tournament?.id ?? null, m.tournament?.name ?? null,
     m.seasonId ?? null, m.round ?? null, m.startTime, m.status, m.home.id, m.away.id,
-    m.homeGoals ?? null, m.awayGoals ?? null, m.homeGoalsHt ?? null, m.awayGoalsHt ?? null, nowSec());
+    m.homeGoals ?? null, m.awayGoals ?? null, m.homeGoalsHt ?? null, m.awayGoalsHt ?? null,
+    m.referee ?? null, nowSec());
   }
 
   function saveStats(matchId, s) {
+    validateStats(s);
     const cols = [];
     const vals = [];
     for (const c of STAT_COLS) {
@@ -76,8 +81,11 @@ function createRepositories(db) {
   }
 
   function saveOdds(matchId, odds) {
+    for (const o of odds) validateOdds(o);
     for (const o of odds) {
       db.run(`INSERT OR REPLACE INTO odds(match_id,market,selection,line,decimal_odds,source,fetched_at)
+              VALUES(?,?,?,?,?,?,?)`, matchId, o.market, o.selection, o.line ?? 0, o.decimalOdds, o.source ?? null, nowSec());
+      db.run(`INSERT INTO odds_history(match_id,market,selection,line,decimal_odds,source,captured_at)
               VALUES(?,?,?,?,?,?,?)`, matchId, o.market, o.selection, o.line ?? 0, o.decimalOdds, o.source ?? null, nowSec());
     }
   }
@@ -122,6 +130,19 @@ function createRepositories(db) {
   }
 
   /** Medias de goles del "pool" (torneo si hay muestra; si no, global) para normalizar fuerzas. */
+  function xgBaseline(tournamentId, beforeSec, minSample = 40) {
+    const since = beforeSec - 400 * 86400;
+    const q = `SELECT COUNT(*) AS n, AVG(s.home_xg) AS home, AVG(s.away_xg) AS away
+      FROM matches m JOIN match_stats s ON s.match_id=m.id
+      WHERE m.status='finished' AND s.available=1 AND s.home_xg IS NOT NULL AND m.start_time < ? AND m.start_time >= ?`;
+    if (tournamentId) {
+      const r = db.get(`${q} AND m.tournament_id=?`, beforeSec, since, tournamentId);
+      if (r && r.n >= minSample) return { ...r, scope: 'tournament' };
+    }
+    const g = db.get(q, beforeSec, since);
+    return { ...g, scope: 'global' };
+  }
+
   function goalBaseline(tournamentId, beforeSec, minSample = 40) {
     const since = beforeSec - 400 * 86400;
     const q = `SELECT COUNT(*) AS n, AVG(home_goals) AS home, AVG(away_goals) AS away,
@@ -296,7 +317,7 @@ function createRepositories(db) {
 
   return {
     upsertTeam, upsertTournament, upsertMatch, saveStats, saveIncidents, linkH2H, saveStandings, saveOdds,
-    getMatch, matchesBetween, teamHistory, h2hHistory, hasStats, allFinishedMatches, goalBaseline, standingFor,
+    getMatch, matchesBetween, teamHistory, h2hHistory, hasStats, allFinishedMatches, goalBaseline, xgBaseline, standingFor,
     oddsFor, incidentsFor, statsFor, saveForecast, latestForecast, forecastsBetween, predictionsForForecast,
     openPredictionMatches, openPredictionsFor, settlePrediction, setPostAnalysis, settledPredictions, history,
     picksForForecasts, settledLambdas, tournamentsList, teamsSearch, getParam, setParam, allParams, startRun, finishRun, lastRuns, counts,

@@ -25,7 +25,13 @@ function components({ home, away, h2h }) {
   const attack = Math.tanh(Math.log(home.strength.attack / away.strength.attack));
   const defense = Math.tanh(Math.log(away.strength.defense / home.strength.defense));
 
-  return { form, h2h: clamp(h2hScore, -1, 1), home: venue, attack, defense };
+  // xG: diferencia de expected goals a favor (si hay datos suficientes)
+  let xg = 0;
+  if (home.xg?.n >= 3 && away.xg?.n >= 3 && home.xg.for !== null && away.xg.for !== null && away.xg.for > 0) {
+    xg = Math.tanh(Math.log(home.xg.for / away.xg.for));
+  }
+
+  return { form, h2h: clamp(h2hScore, -1, 1), home: venue, attack, defense, xg };
 }
 
 function weightedProbabilities(input, { weights = config.model.weightedFactors, slope = config.model.weightedSlope, drawRate = config.model.baseDrawRate } = {}) {

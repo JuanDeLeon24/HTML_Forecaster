@@ -85,6 +85,11 @@ class SofascoreProvider extends BaseProvider {
     const json = await this.get(`/event/${map.ids.native(matchId)}/odds/1/all`);
     return json ? map.mapOdds(json) : [];
   }
+
+  async getLineups(matchId) {
+    const json = await this.get(`/event/${map.ids.native(matchId)}/lineups`);
+    return json ? map.mapLineups(json) : null;
+  }
 }
 
 module.exports = { SofascoreProvider };

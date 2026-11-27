@@ -4,12 +4,12 @@
  * El motor de aprendizaje puede sobrescribirlos (tabla model_params) cuando hay muestra suficiente.
  */
 module.exports = {
-  version: '0.3.0',
+  version: '0.5.0',
   // Nivel 1 – modelo ponderado (suma = 1)
-  weightedFactors: { form: 0.35, h2h: 0.2, home: 0.1, attack: 0.2, defense: 0.15 },
+  weightedFactors: { form: 0.3, h2h: 0.15, home: 0.1, attack: 0.18, defense: 0.12, xg: 0.15 },
   weightedSlope: 3.0,
   // Mezcla del 1X2 final entre modelos
-  ensemble: { poisson: 0.5, elo: 0.25, weighted: 0.25 },
+  ensemble: { poisson: 0.4, elo: 0.2, weighted: 0.2, bivariate: 0.2, tree: 0 },
   // Dixon-Coles: rho típico en la literatura entre -0.05 y -0.15
   dixonColesRho: -0.08,
   // Elo

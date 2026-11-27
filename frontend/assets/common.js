@@ -96,7 +96,7 @@ const HF = {
     return { text: v('--text'), muted: v('--muted'), border: v('--border'), accent: v('--accent'), home: v('--home'), draw: v('--draw'), away: v('--away'), good: v('--good'), bad: v('--bad') };
   },
   header() {
-    const links = [['index', 'Partidos del día'], ['stats', 'Rendimiento'], ['history', 'Historial']];
+    const links = [['index', 'Partidos del día'], ['live', 'En vivo'], ['stats', 'Rendimiento'], ['history', 'Historial']];
     const el = document.createElement('header');
     el.className = 'topbar';
     el.innerHTML = `<div class="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-4 flex-wrap">

@@ -70,25 +70,81 @@ function multiclass1X2(rows) {
   return n ? { n, brier: brier / n, rps: rps / n, logLoss: ll / n, accuracy: correct / n } : { n: 0 };
 }
 
-function roi(rows) {
+function yieldMetric(rows) {
   const bets = rows.filter((r) => r.is_pick && r.odds);
   const profit = bets.reduce((s, r) => s + (r.outcome ? r.odds - 1 : -1), 0);
-  return { bets: bets.length, profit, roi: bets.length ? profit / bets.length : null, hitRate: bets.length ? bets.filter((r) => r.outcome).length / bets.length : null };
+  return { bets: bets.length, profit, yield: bets.length ? profit / bets.length : null, hitRate: bets.length ? bets.filter((r) => r.outcome).length / bets.length : null };
+}
+
+function roi(rows, bankroll = 100) {
+  const bets = rows.filter((r) => r.is_pick && r.odds);
+  const profit = bets.reduce((s, r) => s + (r.outcome ? r.odds - 1 : -1), 0);
+  return { bets: bets.length, profit, roi: bets.length ? profit / bankroll : null, hitRate: bets.length ? bets.filter((r) => r.outcome).length / bets.length : null };
+}
+
+function bootstrapCI(rows, metricFn, iterations = 1000, seed = 42) {
+  if (!rows.length) return null;
+  let s = seed >>> 0;
+  const rng = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2 ** 32; };
+  const estimates = [];
+  for (let i = 0; i < iterations; i++) {
+    const sample = [];
+    for (let j = 0; j < rows.length; j++) sample.push(rows[Math.floor(rng() * rows.length)]);
+    estimates.push(metricFn(sample));
+  }
+  estimates.sort((a, b) => a - b);
+  return { estimate: metricFn(rows), ciLow: estimates[Math.floor(0.025 * iterations)], ciHigh: estimates[Math.floor(0.975 * iterations)] };
+}
+
+function calibrationQuantiles(rows, bins = 10) {
+  const sorted = rows.slice().sort((a, b) => a.probability - b.probability);
+  const size = Math.max(1, Math.ceil(sorted.length / bins));
+  const out = [];
+  for (let i = 0; i < bins; i++) {
+    const chunk = sorted.slice(i * size, (i + 1) * size);
+    if (!chunk.length) continue;
+    const n = chunk.length;
+    const sumP = chunk.reduce((s, r) => s + r.probability, 0);
+    const hits = chunk.reduce((s, r) => s + r.outcome, 0);
+    out.push({ from: chunk[0].probability, to: chunk[chunk.length - 1].probability, n, predicted: sumP / n, observed: hits / n });
+  }
+  return out;
+}
+
+// Una sola fila por evento binario para evitar doble conteo en el agregado global.
+function primaryRows(rows) {
+  return rows.filter((r) => {
+    if (r.market === 'OU' && r.selection !== 'over') return false;
+    if (r.market === 'BTTS' && r.selection !== 'yes') return false;
+    if (r.market === 'CORNERS' && r.selection !== 'under' && r.selection !== 'over') return false;
+    if (r.market === 'CORNERS' && r.selection === 'under') return false;
+    if (r.market === 'CARDS' && r.selection === 'under') return false;
+    if (['1X2', 'DC', 'TEAM_OU'].includes(r.market)) return false;
+    return true;
+  });
 }
 
 function fullReport(rows) {
   const byMarket = {};
   for (const r of rows) (byMarket[r.market] ??= []).push(r);
   const picks = rows.filter((r) => r.is_pick);
+  const prim = primaryRows(rows);
+  const ym = yieldMetric(prim.length ? prim : rows);
   return {
-    overall: binaryMetrics(rows),
+    overall: binaryMetrics(prim.length ? prim : rows),
     picks: binaryMetrics(picks),
     result1X2: multiclass1X2(rows),
     byMarket: Object.fromEntries(Object.entries(byMarket).map(([k, v]) => [k, binaryMetrics(v)])),
-    calibration: calibration(rows),
+    calibration: calibration(prim.length ? prim : rows),
     calibrationPicks: calibration(picks),
-    roi: roi(rows),
+    calibrationQuantiles: calibrationQuantiles(prim.length ? prim : rows),
+    roi: ym,
+    yield: ym,
+    roiBankroll: roi(prim.length ? prim : rows),
+    brierCI: bootstrapCI(prim.length ? prim : rows, (s) => binaryMetrics(s).brier),
+    logLossCI: bootstrapCI(prim.length ? prim : rows, (s) => binaryMetrics(s).logLoss),
+    yieldCI: bootstrapCI(prim.length ? prim : rows, (s) => yieldMetric(s).yield ?? 0),
   };
 }
 
-module.exports = { binaryMetrics, calibration, multiclass1X2, roi, fullReport };
+module.exports = { binaryMetrics, calibration, calibrationQuantiles, multiclass1X2, roi, yieldMetric, bootstrapCI, fullReport };

@@ -24,16 +24,23 @@ function collect1X2(repos) {
   return [...byF.values()].filter((g) => g['1'] && g.X && g['2'] && g['1'].c.elo !== null);
 }
 
-function brierOf(groups, w) {
+const ALL_MODELS = ['poisson', 'elo', 'weighted', 'bivariate', 'tree'];
+
+function availableModels(groups) {
+  return ALL_MODELS.filter((m) => groups.every((g) => g['1'].c[m] !== undefined && g['1'].c[m] !== null));
+}
+
+function brierOf(groups, w, models = availableModels(groups)) {
   let s = 0;
   for (const g of groups) {
     let tw = 0;
     const p = { 1: 0, X: 0, 2: 0 };
-    for (const m of ['poisson', 'elo', 'weighted']) {
+    for (const m of models) {
       if (!w[m]) continue;
       for (const k of ['1', 'X', '2']) p[k] += w[m] * g[k].c[m];
       tw += w[m];
     }
+    if (tw === 0) return Infinity;
     for (const k of ['1', 'X', '2']) s += (p[k] / tw - g[k].o) ** 2;
   }
   return s / groups.length;
@@ -42,19 +49,30 @@ function brierOf(groups, w) {
 function learnEnsembleWeights(repos, { minSamples = 30, step = 0.05 } = {}) {
   const groups = collect1X2(repos);
   if (groups.length < minSamples) return { updated: false, reason: `Se necesitan ≥${minSamples} partidos 1X2 liquidados con los 3 modelos (hay ${groups.length}).` };
+  const models = availableModels(groups);
   let best = null;
   const steps = Math.round(1 / step);
-  for (let i = 0; i <= steps; i++) {
-    for (let j = 0; i + j <= steps; j++) {
-      const w = { poisson: i / steps, elo: j / steps, weighted: (steps - i - j) / steps };
-      const br = brierOf(groups, w);
-      if (!best || br < best.brier) best = { w, brier: br };
+  // Grid sobre el símplex para N modelos
+  function recurse(idx, remaining, current) {
+    if (idx === models.length - 1) {
+      const w = { ...current, [models[idx]]: remaining / steps };
+      const br = brierOf(groups, w, models);
+      if (!best || br < best.brier) best = { w: { ...w }, brier: br };
+      return;
+    }
+    for (let i = 0; i <= remaining; i++) {
+      recurse(idx + 1, remaining - i, { ...current, [models[idx]]: i / steps });
     }
   }
+  recurse(0, steps, {});
   const def = config.model.ensemble;
   const alpha = groups.length / (groups.length + 200);
   const w = {};
-  for (const k of Object.keys(def)) w[k] = Math.round((alpha * best.w[k] + (1 - alpha) * def[k]) * 1000) / 1000;
+  for (const k of Object.keys(def)) {
+    const optWeight = models.includes(k) ? (best.w[k] ?? 0) : 0;
+    const baseWeight = models.includes(k) ? def[k] : 0;
+    w[k] = Math.round((alpha * optWeight + (1 - alpha) * baseWeight) * 1000) / 1000;
+  }
   const metric = {
     brierOptimal: best.brier, optimalWeights: best.w, brierFinal: brierOf(groups, w), brierDefault: brierOf(groups, def),
     brierSingle: { poisson: brierOf(groups, { poisson: 1 }), elo: brierOf(groups, { elo: 1 }), weighted: brierOf(groups, { weighted: 1 }) }, alpha,

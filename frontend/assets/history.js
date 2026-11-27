@@ -11,6 +11,7 @@ root.innerHTML = `
       <select id="tournament"><option value="">Todas las competiciones</option></select>
       <input id="team" placeholder="Equipo" list="teams" class="w-40"><datalist id="teams"></datalist>
       <button class="btn" id="apply">Aplicar</button>
+      <button class="btn btn-ghost" id="export">Exportar CSV</button>
     </div>
   </section>
   <section class="panel panel-b" id="tbl"><div class="empty">Cargando…</div></section>`;
@@ -48,5 +49,10 @@ $('team').oninput = async (e) => {
   $('teams').innerHTML = teams.map((t) => `<option value="${HF.esc(t.name)}">`).join('');
 };
 $('apply').onclick = () => load().catch((e) => { $('tbl').innerHTML = `<div class="empty">Error: ${HF.esc(e.message)}</div>`; });
+$('export').onclick = async () => {
+  const r = await HF.api('/export?type=history');
+  const blob = new Blob([r.csv], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'history.csv'; a.click();
+};
 load().catch((e) => { $('tbl').innerHTML = `<div class="empty">Error: ${HF.esc(e.message)}</div>`; });
 };

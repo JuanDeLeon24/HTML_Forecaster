@@ -67,14 +67,20 @@ function summarize(games) {
  * @param {object} baseline { home, away } medias de goles del pool
  * @param {number} refTime unix del partido a pronosticar (para decaimiento temporal)
  */
-function buildTeamProfile(teamId, rows, venue, baseline, refTime, params = config.model) {
+function buildTeamProfile(teamId, rows, venue, baseline, refTime, params = config.model, ratings = null) {
   const games = rows.map((r) => perspective(r, teamId));
   const venueGames = games.filter((g) => g.isHome === (venue === 'home'));
 
   // Fuerzas ataque/defensa normalizadas (Maher): ajuste por sede + decaimiento temporal + encogimiento
   const mu = (baseline.home + baseline.away) / 2;
   const h = Math.sqrt(baseline.home / baseline.away);
-  const weights = games.map((g) => 0.5 ** (Math.max(0, refTime - g.startTime) / 86400 / params.decayHalfLifeDays));
+  const initial = (params.eloInitial ?? 1500);
+  const oppFactor = (g) => {
+    if (!ratings) return 1;
+    const r = ratings.get(g.opponentId);
+    return r ? Math.max(0.5, Math.min(1.5, r.elo / initial)) : 1;
+  };
+  const weights = games.map((g) => 0.5 ** (Math.max(0, refTime - g.startTime) / 86400 / params.decayHalfLifeDays) * oppFactor(g));
   const adjScored = games.map((g) => (g.isHome ? g.gf / h : g.gf * h));
   const adjConceded = games.map((g) => (g.isHome ? g.ga * h : g.ga / h));
   const attack = shrink(adjScored, weights, mu, params.shrinkageGames) / mu;

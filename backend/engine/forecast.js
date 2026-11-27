@@ -25,6 +25,8 @@ const { cardsForecast, CARD_LINES } = require('../analyzers/cards');
 const { blend1X2 } = require('../analyzers/results');
 const { impliedNoVig, valueOf } = require('../analyzers/valuebets');
 const { scoreMatrix, marketsFromMatrix } = require('../models/poisson');
+const { bivariateMatrix } = require('../models/bivariate');
+const { treeProbabilities } = require('../models/tree');
 const { computeRatings, eloProbabilities } = require('../models/elo');
 const { weightedProbabilities } = require('../models/weighted');
 const { assessQuality, confidenceIndex } = require('./quality');
@@ -64,8 +66,8 @@ function forecastMatch(match, { repos, ratings, params }) {
   const baseline = resolveBaseline(repos, match.tournament_id, ref);
   const drawRate = baseline.n >= 100 && baseline.draw_rate ? baseline.draw_rate : params.baseDrawRate;
 
-  const home = buildTeamProfile(match.home_team_id, repos.teamHistory(match.home_team_id, ref, 50), 'home', baseline, ref, params);
-  const away = buildTeamProfile(match.away_team_id, repos.teamHistory(match.away_team_id, ref, 50), 'away', baseline, ref, params);
+  const home = buildTeamProfile(match.home_team_id, repos.teamHistory(match.home_team_id, ref, 50), 'home', baseline, ref, params, ratings);
+  const away = buildTeamProfile(match.away_team_id, repos.teamHistory(match.away_team_id, ref, 50), 'away', baseline, ref, params, ratings);
   const h2h = summarizeH2H(repos.h2hHistory(match.home_team_id, match.away_team_id, ref, 20), match.home_team_id, match.away_team_id);
   const oddsRows = repos.oddsFor(match.id);
   const quality = assessQuality({ home, away, h2h, baseline, refTime: ref, oddsCount: oddsRows.length }, params);
@@ -92,6 +94,8 @@ function forecastMatch(match, { repos, ratings, params }) {
   const lambdas = expectedGoals(home, away, h2h, params);
   const rawMatrix = scoreMatrix(lambdas.home, lambdas.away, { rho: params.dixonColesRho, maxGoals: params.maxGoals });
   const poisson = marketsFromMatrix(rawMatrix);
+  const bivMatrix = bivariateMatrix(lambdas.home, lambdas.away, 0.25, params.maxGoals);
+  const bivariate = marketsFromMatrix(bivMatrix);
 
   // --- Elo
   const eh = ratings.get(match.home_team_id);
@@ -101,10 +105,11 @@ function forecastMatch(match, { repos, ratings, params }) {
 
   // --- Ponderado
   const weighted = weightedProbabilities({ home, away, h2h }, { weights: params.weightedFactors, slope: params.weightedSlope, drawRate });
+  const tree = treeProbabilities(weighted);
 
   const weights = { ...params.ensemble };
   if (!elo) weights.elo = 0;
-  const final1X2 = blend1X2({ poisson: poisson['1X2'], elo, weighted }, weights);
+  const final1X2 = blend1X2({ poisson: poisson['1X2'], elo, weighted, bivariate: bivariate['1X2'], tree }, weights);
   const matrix = rescaleMatrix(rawMatrix, final1X2);
   const goals = marketsFromMatrix(matrix);
 
@@ -128,6 +133,8 @@ function forecastMatch(match, { repos, ratings, params }) {
     models: {
       poisson: roundDeep(poisson['1X2']), elo: elo ? roundDeep(elo) : null,
       weighted: roundDeep({ 1: weighted[1], X: weighted.X, 2: weighted[2], score: weighted.score, components: weighted.components }),
+      bivariate: roundDeep(bivariate['1X2']),
+      tree: roundDeep(tree),
       ensembleWeights: weights,
     },
     lambdas: roundDeep(lambdas),
@@ -167,7 +174,7 @@ function forecastMatch(match, { repos, ratings, params }) {
   output.quality = quality;
 
   // --- Filas binarias para validación (todas las selecciones de todos los mercados)
-  const predictions = flattenPredictions(probabilities, { poisson: poisson['1X2'], elo, weighted }, oddsRows, output.pick);
+  const predictions = flattenPredictions(probabilities, { poisson: poisson['1X2'], elo, weighted, bivariate: bivariate['1X2'], tree }, oddsRows, output.pick);
   inputs.lambdasBase = lambdas.base;
   return { status: 'ok', matchInfo, inputs, quality, output, predictions };
 }
@@ -180,7 +187,7 @@ function flattenPredictions(probs, models, oddsRows, pick) {
     rows.push({ market, selection, line, probability: round(p, 6), components, odds: oddsMap.get(legKey(leg)) ?? null, isPick: pick && legKey(pick) === legKey(leg) });
   };
   for (const s of ['1', 'X', '2']) {
-    push('1X2', s, 0, probs['1X2'][s], { poisson: round(models.poisson[s], 6), elo: models.elo ? round(models.elo[s], 6) : null, weighted: round(models.weighted[s], 6) });
+    push('1X2', s, 0, probs['1X2'][s], { poisson: round(models.poisson[s], 6), elo: models.elo ? round(models.elo[s], 6) : null, weighted: round(models.weighted[s], 6), bivariate: models.bivariate ? round(models.bivariate[s], 6) : null, tree: models.tree ? round(models.tree[s], 6) : null });
   }
   for (const s of ['1X', 'X2', '12']) push('DC', s, 0, probs.DC[s]);
   for (const [line, p] of Object.entries(probs.OU.over)) {

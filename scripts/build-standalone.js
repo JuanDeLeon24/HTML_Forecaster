@@ -50,7 +50,7 @@ async function main() {
 
   const wasm = fs.readFileSync(r('node_modules/sql.js/dist/sql-wasm.wasm')).toString('base64');
   const chartJs = read(r('node_modules/chart.js/dist/chart.umd.js'));
-  const pageJs = ['common.js', 'index.js', 'analysis.js', 'stats.js', 'history.js'].map((f) => read(r('frontend/assets', f))).join('\n;\n')
+  const pageJs = ['common.js', 'index.js', 'live.js', 'analysis.js', 'stats.js', 'history.js'].map((f) => read(r('frontend/assets', f))).join('\n;\n')
     + '\n;\n' + read(r('standalone/settings.js'));
   const pageJsMin = (await esbuild.transform(pageJs, { minify: true, target: 'es2020' })).code;
   const appCss = read(r('frontend/assets/app.css'));

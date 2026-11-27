@@ -33,6 +33,7 @@ class BaseProvider {
   async getH2H(_match) { return []; }
   async getStandings(_tournamentId, _seasonId) { return []; }
   async getOdds(_matchId) { return []; }
+  async getLineups(_matchId) { return null; }
   /** Número de peticiones realizadas (para logs / auditoría). */
   get requestCount() { return 0; }
 }
