@@ -150,8 +150,7 @@ class ApiFootballProvider extends BaseProvider {
   }
   defaultCompetitions() { return config.apiFootball.leagues; }
   async getRecentSeasons(_competitionId, count = 2) {
-    const d = new Date();
-    const start = d.getUTCMonth() >= 6 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
+    const start = config.apiFootball.seasonStart;
     return Array.from({ length: count }, (_, i) => ({ id: String(start - i), name: `${start - i}/${start - i + 1}` }));
   }
   async getSeasonMatches(competitionId, seasonId) {

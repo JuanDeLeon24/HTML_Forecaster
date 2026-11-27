@@ -40,6 +40,7 @@ const config = {
   apiFootball: {
     baseUrl: process.env.API_FOOTBALL_BASE_URL || 'https://v3.football.api-sports.io',
     apiKey: process.env.API_FOOTBALL_API_KEY || null,
+    seasonStart: Number(process.env.API_FOOTBALL_SEASON_START || 2024),
     // PL, Championship, LaLiga, Bundesliga, Serie A, Ligue 1, UCL, UEL, UECL
     leagues: list(process.env.API_FOOTBALL_LEAGUES || '39,40,140,78,135,61,2,3,848').map(Number),
     minIntervalMs: int(process.env.API_FOOTBALL_INTERVAL_MS, 6500),
