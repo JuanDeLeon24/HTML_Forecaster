@@ -4,10 +4,14 @@
  * objetos canónicos independientes del proveedor de datos.
  */
 const { nowSec } = require('../lib/dates');
+const { validateMatch, sanitizeStats, validateOdds } = require('../validators');
+const { recordError } = require('../lib/logger');
+const { migrate } = require('./migrations');
 
 const STAT_COLS = ['corners', 'yellow', 'red', 'shots', 'sot', 'possession', 'fouls', 'xg'];
 
 function createRepositories(db) {
+  migrate(db);
   // ---------------------------------------------------------------- escritura
   function upsertTeam(t) {
     db.run(`INSERT INTO teams(id, provider, name, short_name, country, updated_at)
@@ -24,7 +28,13 @@ function createRepositories(db) {
     t.id, t.provider, t.name, t.category ?? null, nowSec());
   }
 
+  /** Guarda un partido SOLO si supera la validación; si no, lo registra en errors.log y devuelve false. */
   function upsertMatch(m) {
+    const errors = validateMatch(m);
+    if (errors.length) {
+      recordError({ source: m?.provider ?? 'desconocido', endpoint: m?.id ?? null, error: `partido rechazado: ${errors.join('; ')}`, impact: 'el partido no se guarda ni se usa en el análisis' });
+      return false;
+    }
     upsertTeam({ ...m.home, provider: m.provider });
     upsertTeam({ ...m.away, provider: m.provider });
     if (m.tournament) upsertTournament({ ...m.tournament, provider: m.provider });
@@ -39,9 +49,11 @@ function createRepositories(db) {
     m.id, m.provider, m.providerRef ?? null, m.tournament?.id ?? null, m.tournament?.name ?? null,
     m.seasonId ?? null, m.round ?? null, m.startTime, m.status, m.home.id, m.away.id,
     m.homeGoals ?? null, m.awayGoals ?? null, m.homeGoalsHt ?? null, m.awayGoalsHt ?? null, nowSec());
+    return true;
   }
 
-  function saveStats(matchId, s) {
+  function saveStats(matchId, raw, ctx = {}) {
+    const s = sanitizeStats(raw, { source: ctx.source, endpoint: ctx.endpoint ?? `${matchId}/statistics` });
     const cols = [];
     const vals = [];
     for (const c of STAT_COLS) {
@@ -77,6 +89,8 @@ function createRepositories(db) {
 
   function saveOdds(matchId, odds) {
     for (const o of odds) {
+      const errs = validateOdds(o);
+      if (errs.length) { recordError({ source: o.source ?? 'odds', endpoint: `${matchId}/odds`, error: errs.join('; '), impact: 'cuota descartada' }); continue; }
       db.run(`INSERT OR REPLACE INTO odds(match_id,market,selection,line,decimal_odds,source,fetched_at)
               VALUES(?,?,?,?,?,?,?)`, matchId, o.market, o.selection, o.line ?? 0, o.decimalOdds, o.source ?? null, nowSec());
     }
@@ -98,7 +112,8 @@ function createRepositories(db) {
   function teamHistory(teamId, beforeSec, limit) {
     return db.all(`SELECT m.*, s.available AS stats_available,
         s.home_corners, s.away_corners, s.home_yellow, s.away_yellow, s.home_red, s.away_red,
-        s.home_shots, s.away_shots, s.home_sot, s.away_sot, s.home_xg, s.away_xg
+        s.home_shots, s.away_shots, s.home_sot, s.away_sot, s.home_xg, s.away_xg, s.home_fouls, s.away_fouls,
+        s.home_possession, s.away_possession
       FROM matches m LEFT JOIN match_stats s ON s.match_id=m.id
       WHERE (m.home_team_id=? OR m.away_team_id=?) AND m.status='finished' AND m.start_time < ?
         AND m.home_goals IS NOT NULL
@@ -135,6 +150,18 @@ function createRepositories(db) {
     return { ...g, scope: 'global' };
   }
 
+  /** xG medio por equipo y partido del pool (para normalizar el modelo xG). */
+  function xgBaseline(tournamentId, beforeSec, minSample = 30) {
+    const since = beforeSec - 400 * 86400;
+    const q = `SELECT COUNT(*) AS n, AVG(s.home_xg) AS home, AVG(s.away_xg) AS away FROM match_stats s JOIN matches m ON m.id=s.match_id
+      WHERE s.home_xg IS NOT NULL AND s.away_xg IS NOT NULL AND m.status='finished' AND m.start_time < ? AND m.start_time >= ?`;
+    if (tournamentId) {
+      const r = db.get(`${q} AND m.tournament_id=?`, beforeSec, since, tournamentId);
+      if (r && r.n >= minSample) return { ...r, scope: 'tournament' };
+    }
+    return { ...db.get(q, beforeSec, since), scope: 'global' };
+  }
+
   function standingFor(tournamentId, seasonId, teamId) {
     return db.get('SELECT * FROM standings WHERE tournament_id=? AND season_id=? AND team_id=?', tournamentId, seasonId, teamId);
   }
@@ -156,10 +183,13 @@ function createRepositories(db) {
       JSON.stringify(f.inputs), JSON.stringify(f.output), JSON.stringify(f.quality));
       const forecastId = Number(r.lastInsertRowid);
       for (const p of predictions) {
-        db.run(`INSERT INTO predictions(forecast_id, match_id, market, selection, line, probability, components_json, odds, is_pick, created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?)`, forecastId, f.matchId, p.market, p.selection, p.line ?? 0, p.probability,
+        db.run(`INSERT INTO predictions(forecast_id, match_id, market, selection, line, probability, raw_probability, calibrated, confidence_score,
+                  components_json, odds, is_pick, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, forecastId, f.matchId, p.market, p.selection, p.line ?? 0,
+        p.probability, p.rawProbability ?? p.probability, p.calibrated ? 1 : 0, p.confidence ?? null,
         p.components ? JSON.stringify(p.components) : null, p.odds ?? null, p.isPick ? 1 : 0, nowSec());
       }
+      if (f.modelPredictions) saveModelPredictions(forecastId, f.matchId, f.modelPredictions);
+      if (f.valueBets) saveValueBets(forecastId, f.matchId, f.valueBets);
       return forecastId;
     });
   }
@@ -246,6 +276,69 @@ function createRepositories(db) {
       .map((r) => ({ lambdaHome: r.o.lambdas.home, lambdaAway: r.o.lambdas.away, homeGoals: r.homeGoals, awayGoals: r.awayGoals }));
   }
 
+  /** Pronósticos (última versión) de partidos terminados con su resultado 1X2: para entrenar ML. */
+  function settledForecastOutputs() {
+    return db.all(`SELECT f.output_json, m.home_goals, m.away_goals, m.start_time FROM forecasts f JOIN matches m ON m.id=f.match_id
+      WHERE f.is_latest=1 AND m.status='finished' AND m.home_goals IS NOT NULL ORDER BY m.start_time`)
+      .map((r) => ({ output: JSON.parse(r.output_json), t: r.start_time, result: r.home_goals > r.away_goals ? '1' : r.home_goals === r.away_goals ? 'X' : '2' }))
+      .filter((r) => r.output.status === 'ok');
+  }
+
+  function saveModelPredictions(forecastId, matchId, rows) {
+    for (const r of rows) {
+      db.run(`INSERT INTO model_predictions(forecast_id, match_id, model_name, home_probability, draw_probability, away_probability,
+        expected_home_goals, expected_away_goals, generated_at) VALUES(?,?,?,?,?,?,?,?,?)`, forecastId, matchId, r.model, r.p['1'], r.p.X, r.p['2'],
+      r.lambdaHome ?? null, r.lambdaAway ?? null, nowSec());
+    }
+  }
+
+  function saveValueBets(forecastId, matchId, rows) {
+    db.run('DELETE FROM value_bets WHERE match_id=? AND outcome IS NULL', matchId);
+    for (const v of rows) {
+      db.run(`INSERT INTO value_bets(forecast_id, match_id, market, selection, line, odds, model_probability, bookmaker_probability, edge_percent,
+        expected_value, kelly_fraction, stake, confidence_score, accepted, discard_reason, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      forecastId, matchId, v.market, v.selection, v.line ?? 0, v.odds, v.probability, v.impliedNoVig ?? v.implied, v.edge, v.ev, v.kelly, v.stake,
+      v.confidence, v.accepted ? 1 : 0, v.discardReason ?? null, nowSec());
+    }
+  }
+
+  function openValueBets(matchId) { return db.all('SELECT * FROM value_bets WHERE match_id=? AND outcome IS NULL', matchId); }
+  function settleValueBet(id, outcome, profit) { db.run('UPDATE value_bets SET outcome=?, profit=? WHERE id=?', outcome, profit, id); }
+
+  function valueBetsBetween(fromSec, toSec) {
+    return db.all(`SELECT v.*, m.start_time, m.tournament_name, ht.name AS home_name, at.name AS away_name FROM value_bets v
+      JOIN matches m ON m.id=v.match_id JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+      JOIN forecasts f ON f.id=v.forecast_id AND f.is_latest=1
+      WHERE m.start_time >= ? AND m.start_time < ? ORDER BY v.accepted DESC, v.expected_value DESC`, fromSec, toSec);
+  }
+
+  function settledValueBets() {
+    return db.all(`SELECT v.*, m.start_time FROM value_bets v JOIN matches m ON m.id=v.match_id WHERE v.outcome IS NOT NULL ORDER BY m.start_time`);
+  }
+
+  function modelPredictionsFor(forecastId) { return db.all('SELECT * FROM model_predictions WHERE forecast_id=?', forecastId); }
+
+  function saveEloSnapshot(teamId, r) {
+    db.run(`INSERT INTO elo_ratings(team_id, elo_overall, elo_attack, elo_defense, elo_home, elo_away, games, calculated_at) VALUES(?,?,?,?,?,?,?,?)`,
+      teamId, r.elo, r.atk, r.def, r.home ?? null, r.away ?? null, r.games, nowSec());
+  }
+
+  function recordTraining(r) {
+    db.run(`INSERT INTO ml_training_history(model_name, training_samples, validation_samples, accuracy, logloss, brier, baseline_brier, adopted, reason, started_at, finished_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?)`, r.model_name, r.training_samples ?? 0, r.validation_samples ?? 0, r.accuracy ?? null, r.logloss ?? null,
+    r.brier ?? null, r.baseline_brier ?? null, r.adopted ? 1 : 0, r.reason ?? null, r.started_at ?? nowSec(), nowSec());
+  }
+  function recordCalibration(r) {
+    db.run(`INSERT INTO calibration_results(scope, n, brier_score, logloss, rps, ece, mce, sharpness, method, created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+      r.scope, r.n, r.brier_score ?? null, r.logloss ?? null, r.rps ?? null, r.ece ?? null, r.mce ?? null, r.sharpness ?? null, r.method ?? 'none', nowSec());
+  }
+  function recordBacktest(r) {
+    db.run(`INSERT INTO backtesting_results(strategy, total_bets, wins, losses, staked, profit, roi, yield, max_drawdown, created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+      r.strategy, r.totalBets, r.wins, r.losses, r.staked, r.profit, r.roi ?? null, r.yield ?? null, r.maxDrawdown ?? null, nowSec());
+  }
+  function trainingHistory(limit = 30) { return db.all('SELECT * FROM ml_training_history ORDER BY id DESC LIMIT ?', limit); }
+  function latestCalibration() { return db.all('SELECT c.* FROM calibration_results c WHERE c.id IN (SELECT MAX(id) FROM calibration_results GROUP BY scope)'); }
+
   function picksForForecasts(ids) {
     if (!ids.length) return [];
     return db.all(`SELECT * FROM predictions WHERE is_pick=1 AND forecast_id IN (${ids.map(() => '?').join(',')})`, ...ids);
@@ -296,10 +389,12 @@ function createRepositories(db) {
 
   return {
     upsertTeam, upsertTournament, upsertMatch, saveStats, saveIncidents, linkH2H, saveStandings, saveOdds,
-    getMatch, matchesBetween, teamHistory, h2hHistory, hasStats, allFinishedMatches, goalBaseline, standingFor,
+    getMatch, matchesBetween, teamHistory, h2hHistory, hasStats, allFinishedMatches, goalBaseline, xgBaseline, standingFor,
     oddsFor, incidentsFor, statsFor, saveForecast, latestForecast, forecastsBetween, predictionsForForecast,
     openPredictionMatches, openPredictionsFor, settlePrediction, setPostAnalysis, settledPredictions, history,
-    picksForForecasts, settledLambdas, tournamentsList, teamsSearch, getParam, setParam, allParams, startRun, finishRun, lastRuns, counts,
+    picksForForecasts, settledLambdas, settledForecastOutputs, saveModelPredictions, saveValueBets, openValueBets, settleValueBet,
+    valueBetsBetween, settledValueBets, modelPredictionsFor, saveEloSnapshot, recordTraining, recordCalibration, recordBacktest, trainingHistory,
+    latestCalibration, tournamentsList, teamsSearch, getParam, setParam, allParams, startRun, finishRun, lastRuns, counts,
   };
 }
 

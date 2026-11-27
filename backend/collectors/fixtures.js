@@ -19,7 +19,8 @@ async function collectFixtures(date, { provider, repos, tournaments = config.col
   }
   matches.sort((a, b) => a.startTime - b.startTime);
   if (maxMatches > 0) matches = matches.slice(0, maxMatches);
-  for (const m of matches) repos.upsertMatch(m);
+  // Solo continúan los partidos que superan la validación
+  matches = matches.filter((m) => repos.upsertMatch(m));
   log.info(`Partidos del ${date}: ${matches.length} (de ${all.length} recibidos)`);
   return matches;
 }

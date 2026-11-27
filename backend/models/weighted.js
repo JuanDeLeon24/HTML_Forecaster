@@ -28,8 +28,9 @@ function components({ home, away, h2h }) {
   return { form, h2h: clamp(h2hScore, -1, 1), home: venue, attack, defense };
 }
 
-function weightedProbabilities(input, { weights = config.model.weightedFactors, slope = config.model.weightedSlope, drawRate = config.model.baseDrawRate } = {}) {
+function weightedProbabilities(input, { weights = config.model.weightedFactors, slope = config.model.weightedSlope, drawRate = config.model.baseDrawRate, zero = [] } = {}) {
   const c = components(input);
+  for (const k of zero) c[k] = 0; // neutralizar un factor (explicabilidad por ablación)
   const score = Object.keys(weights).reduce((s, k) => s + weights[k] * c[k], 0);
   const cut = Math.log((1 + drawRate) / (1 - drawRate));
   const p1 = sigmoid(slope * score - cut);

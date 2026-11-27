@@ -41,6 +41,11 @@ function settleMatch(repos, matchId) {
     repos.settlePrediction(p.id, outcome);
     if (outcome !== null) n++;
   }
+  // Apuestas de valor registradas antes del partido
+  for (const v of repos.openValueBets ? repos.openValueBets(matchId) : []) {
+    const o = settle({ market: v.market, selection: v.selection, line: v.line }, result);
+    if (o !== null) repos.settleValueBet(v.id, o, o ? v.stake * (v.odds - 1) : -v.stake);
+  }
   const forecast = repos.latestForecast(matchId);
   if (forecast && forecast.output.status === 'ok') {
     const settled = repos.predictionsForForecast(forecast.id).filter((p) => p.outcome !== null && !p.void);

@@ -1,0 +1,46 @@
+'use strict';
+process.env.NODE_ENV = 'test';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { Database } = require('../backend/database/db');
+const { createRepositories } = require('../backend/database/repositories');
+const services = require('../backend/services');
+const { setProvider } = require('../backend/providers');
+const { dispatch } = require('../backend/routes/handlers');
+const { shiftDate, today } = require('../backend/lib/dates');
+const { FakeProvider } = require('./helpers/fakeProvider');
+
+test('integración API: recolectar → pronosticar → consultar todos los endpoints', async () => {
+  const date = shiftDate(today(), 1);
+  const provider = new FakeProvider({ scheduledDate: date, seed: 3 });
+  services.setRepos(createRepositories(new Database(':memory:')));
+  setProvider(provider);
+  await services.collect(date, () => {}, { tournaments: [], maxMatches: 0 });
+  const fc = (await dispatch('POST', '/forecast', {}, { date })).body;
+  assert.equal(fc.forecasted, 6);
+
+  const health = await dispatch('GET', '/health');
+  assert.equal(health.status, 200);
+  assert.ok(health.body.counts.forecasts >= 6);
+  const matches = (await dispatch('GET', '/matches', { date })).body;
+  assert.equal(matches.count, 6);
+  const id = matches.matches[0].id;
+  const detail = await dispatch('GET', `/forecasts/${encodeURIComponent(id)}`);
+  assert.equal(detail.status, 200);
+  assert.ok(detail.body.modelPredictions.length >= 6, 'predicciones por modelo guardadas');
+  const rk = (await dispatch('GET', '/rankings', { date })).body;
+  assert.ok(rk.confidence[0].confidenceGrade);
+  const combo = await dispatch('POST', '/combination', {}, { matchId: id, legs: [{ market: '1X2', selection: '1' }, { market: 'OU', selection: 'over', line: 2.5 }] });
+  assert.ok(combo.body.joint > 0 && combo.body.joint < 1);
+  const vb = (await dispatch('GET', '/value-bets', { date })).body;
+  assert.ok(vb.accepted.length + vb.discarded.length > 0);
+  assert.equal((await dispatch('GET', '/performance')).status, 200);
+  assert.equal((await dispatch('GET', '/backtesting')).status, 200);
+  assert.equal((await dispatch('GET', '/history')).status, 200);
+  assert.equal((await dispatch('GET', '/model')).status, 200);
+  assert.equal((await dispatch('GET', '/matches', { date: 'no-es-fecha' })).status, 400);
+  assert.equal((await dispatch('GET', '/forecasts/x:event:999')).status, 404);
+  assert.equal((await dispatch('GET', '/nada')).status, 404);
+  const learn = (await dispatch('POST', '/learn')).body;
+  assert.equal(learn.ensemble.updated, false);
+});

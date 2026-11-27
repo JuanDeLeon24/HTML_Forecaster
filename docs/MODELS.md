@@ -69,6 +69,16 @@ Con datos registrados únicamente: expulsiones (minuto, equipo, jugador), penale
 tempranos, xG vs goles (varianza de definición), xG vs goles esperados (perfil distinto).
 Lesiones y rotaciones requieren alineaciones (Fase 3).
 
+## Modelos añadidos en v0.4
+- **Poisson clásico** (sin corrección) y **bivariado** (Karlis-Ntzoufras, λ3 = 0.1 por defecto) como referencia en el comparador.
+- **xG/xGA**: misma estructura multiplicativa que Poisson usando goles esperados (mín. 5 partidos con xG por equipo).
+- **Bayesiano**: las fuerzas son la media posterior Gamma-Poisson; se publica también su desviación típica.
+- **Elo local/visitante**: ratings separados por sede.
+- **Regresión logística multinomial** sobre características previas al partido; entra al ensamble solo si supera a Dixon-Coles en validación temporal.
+- **Ensamble**: Dixon-Coles, Elo, Ponderado, xG y Logística. Pesos aprendidos con validación expanding-window y reglas de no-cambio (muestra, varianza, sobreajuste, deriva).
+- **Confianza 0–100** (`engine/confidence.js`) y **valor** (`engine/valueBets.js`): ver docs/COMPLIANCE.md.
+- **Explicabilidad**: ablación (se neutraliza cada factor y se mide el cambio en la probabilidad del favorito).
+
 ## Limitaciones conocidas
 - Las fuerzas no se ajustan todavía por la calidad del rival (lo compensa en parte el Elo).
 - El Elo se calcula con los partidos presentes en la base: equipos de ligas sin conexión entre sí

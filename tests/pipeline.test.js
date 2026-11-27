@@ -34,6 +34,11 @@ test('pipeline completo: recolectar → pronosticar → liquidar → métricas',
     assert.ok(f.output.probabilities.CORNERS, 'corners disponibles con estadísticas');
     assert.ok(['A', 'B', 'C', 'D'].includes(f.quality.grade));
     assert.ok(f.output.value.length > 0, 'EV calculado con cuotas');
+    assert.ok(f.output.modelComparison.length >= 6, 'comparador con todos los modelos');
+    assert.ok(f.output.models.xg, 'modelo xG disponible con estadísticas de xG');
+    assert.ok(f.output.factors.items.length > 0, 'explicabilidad por factores');
+    assert.ok(['A+', 'A', 'B', 'C', 'D'].includes(f.output.confidence.grade));
+    assert.ok(f.output.fatigue.home.restDays !== null);
   }
   const rk = buildRankings(forecasts);
   assert.equal(rk.confidence.length, 6);
@@ -57,6 +62,10 @@ test('pipeline completo: recolectar → pronosticar → liquidar → métricas',
 
   const l = learnEnsembleWeights(repos);
   assert.equal(l.updated, false, 'no aprende con muestra insuficiente');
+  const { learnAll } = require('../backend/learning/weights');
+  const all = learnAll(repos);
+  assert.equal(all.calibration['1X2'].adopted, false);
+  assert.ok(all.backtesting.value_bets !== undefined);
 });
 
 test('muestra insuficiente → no se emite pronóstico (no se inventan datos)', () => {
@@ -72,20 +81,26 @@ test('muestra insuficiente → no se emite pronóstico (no se inventan datos)', 
   assert.equal(repos.predictionsForForecast(f.id).length, 0);
 });
 
-test('aprendizaje de pesos con muestra suficiente favorece al mejor modelo', () => {
-  // Modelo "poisson" perfecto, "elo" y "weighted" uniformes: los pesos óptimos deben ir a poisson
-  const rows = [];
-  for (let i = 0; i < 300; i++) {
-    const res = ['1', 'X', '2'][i % 3];
-    for (const s of ['1', 'X', '2']) {
-      const good = s === res ? 0.9 : 0.05;
-      rows.push({ forecast_id: i, selection: s, outcome: s === res ? 1 : 0, components_json: JSON.stringify({ poisson: good, elo: 1 / 3, weighted: 1 / 3 }) });
+test('aprendizaje de pesos: adopta solo con mejora validada fuera de muestra', () => {
+  // "poisson" informativo, el resto uniforme: la validación temporal debe aprobar subir su peso
+  const mk = (informative) => {
+    const rows = [];
+    for (let i = 0; i < 300; i++) {
+      const res = ['1', 'X', '2'][(i * 7) % 3];
+      for (const s of ['1', 'X', '2']) {
+        const good = informative ? (s === res ? 0.7 : 0.15) : 1 / 3;
+        rows.push({ forecast_id: i, start_time: 1000 + i, selection: s, outcome: s === res ? 1 : 0,
+          components_json: JSON.stringify({ poisson: good, elo: 1 / 3, weighted: 1 / 3, xg: null, logistic: null }) });
+      }
     }
-  }
+    return rows;
+  };
   const saved = {};
-  const fakeRepos = { settledPredictions: () => rows, setParam: (k, v) => { saved[k] = v; } };
-  const r = learnEnsembleWeights(fakeRepos);
-  assert.equal(r.updated, true);
-  assert.equal(r.metric.optimalWeights.poisson, 1);
-  assert.ok(saved.ensemble_weights.poisson > 0.5);
+  const repos = (rows) => ({ settledPredictions: () => rows, setParam: (k, v) => { saved[k] = v; }, getParam: () => null, recordTraining: () => {} });
+  const r = learnEnsembleWeights(repos(mk(true)));
+  assert.equal(r.updated, true, r.reason);
+  assert.ok(saved.ensemble_weights.poisson > 0.4);
+  // Sin señal: no debe cambiar nada (alta varianza / sin mejora)
+  const r2 = learnEnsembleWeights(repos(mk(false)));
+  assert.equal(r2.updated, false);
 });

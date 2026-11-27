@@ -6,15 +6,22 @@
 const { round } = require('../lib/math');
 const { label } = require('./markets');
 const { marginal } = require('./combinations');
-const { confidenceIndex } = require('./quality');
+const { rankIndex, grade } = require('./confidence');
+const { legKey } = require('./markets');
+
+/** Confianza 0–100 de una selección: la calculada en el pronóstico o, en pronósticos antiguos, la calidad del dato. */
+function legScore(f, leg) {
+  return f.output.legConfidence?.[legKey({ ...leg, line: leg.line ?? 0 })] ?? f.quality.score;
+}
 
 function entry(f, leg, extra = {}) {
   const o = f.output;
   const p = marginal(o, leg);
+  const score = legScore(f, leg);
   return {
     matchId: o.match.id, match: `${o.match.home} vs ${o.match.away}`, tournament: o.match.tournament, startTime: o.match.startTime,
     market: leg.market, selection: leg.selection, line: leg.line ?? 0, label: label(leg, { home: o.match.home, away: o.match.away }),
-    probability: round(p), confidence: round(confidenceIndex(p, f.quality.score)), quality: f.quality.grade, qualityScore: f.quality.score,
+    probability: round(p), confidence: round(rankIndex(p, score)), confidenceScore: score, confidenceGrade: grade(score), quality: f.quality.grade, qualityScore: f.quality.score,
     ...extra,
   };
 }
@@ -36,7 +43,7 @@ function buildRankings(allForecasts, n = 10) {
     .slice(0, n);
 
   const value = forecasts
-    .flatMap((f) => (f.output.value || []).filter((v) => v.ev > 0 && v.probability >= 0.3).map((v) => entry(f, v, { odds: v.odds, ev: v.ev, kellyQuarter: v.kellyQuarter })))
+    .flatMap((f) => (f.output.value || []).filter((v) => (v.accepted ?? v.ev > 0) && v.ev > 0).map((v) => entry(f, v, { odds: v.odds, ev: v.ev, edge: v.edge ?? null, stake: v.stake ?? null, kellyQuarter: v.kellyFractional ?? v.kellyQuarter })))
     .sort((a, b) => b.ev - a.ev)
     .slice(0, n);
 
@@ -44,7 +51,7 @@ function buildRankings(allForecasts, n = 10) {
     .flatMap((f) => (f.output.combinations || []).slice(0, 1).map((c) => ({
       matchId: f.output.match.id, match: `${f.output.match.home} vs ${f.output.match.away}`, tournament: f.output.match.tournament,
       startTime: f.output.match.startTime, label: c.label, legs: c.individual, probability: round(c.joint), risk: c.risk,
-      fairOdds: round(c.fairOdds, 2), confidence: round(confidenceIndex(c.joint, f.quality.score)), quality: f.quality.grade, assumptions: c.assumptions,
+      fairOdds: round(c.fairOdds, 2), confidence: round(rankIndex(c.joint, f.output.confidence?.score ?? f.quality.score)), confidenceScore: f.output.confidence?.score ?? f.quality.score, quality: f.quality.grade, assumptions: c.assumptions,
     })))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, n);

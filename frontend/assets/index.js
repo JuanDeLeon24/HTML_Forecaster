@@ -34,7 +34,7 @@ root.innerHTML = `
     </div>
     <div class="scroll-x" id="matches"></div>
   </section>
-  <p class="text-xs muted">Las probabilidades son estimaciones estadísticas, no certezas. El índice de confianza = probabilidad × (0.5 + 0.5 × calidad/100).</p>`;
+  <p class="text-xs muted">Las probabilidades son estimaciones estadísticas, no certezas. Confianza 0–100 (A+ ≥ 90, A ≥ 80, B ≥ 70, C ≥ 60, D): calidad del dato, acuerdo entre modelos, calibración y precisión del mercado y consistencia de los equipos. El ranking ordena por probabilidad × (0.5 + 0.5 × confianza/100).</p>`;
 
 const TABS = [
   ['confidence', 'Mayor confianza'], ['value', 'Mejor valor (EV)'], ['combinations', 'Combinaciones'],
@@ -55,8 +55,8 @@ function shift(days) {
 async function load() {
   $('matches').innerHTML = '<div class="empty">Cargando…</div>';
   try {
-    const [m, r] = await Promise.all([HF.api(`/matches?date=${state.date}`), HF.api(`/rankings?date=${state.date}`)]);
-    state.matches = m.matches; state.rankings = r;
+    const [m, r, perf] = await Promise.all([HF.api(`/matches?date=${state.date}`), HF.api(`/rankings?date=${state.date}`), HF.api('/performance').catch(() => null)]);
+    state.matches = m.matches; state.rankings = r; state.perf = perf;
     renderKpis(); renderTabs(); renderRanking(); renderMatches();
   } catch (e) {
     $('matches').innerHTML = `<div class="empty">Error: ${HF.esc(e.message)}</div>`;
@@ -73,6 +73,14 @@ function renderKpis() {
     ['Calidad media', avgQ ?? '—', 'sobre 100'],
     ['Con cuotas', state.rankings?.meta.withOdds ?? 0, 'permiten calcular valor esperado'],
   ];
+  const o = state.perf?.overall;
+  const pk = state.perf?.roi;
+  kp.push(
+    ['Brier histórico', o?.n ? HF.n(o.brier, 3) : '—', o?.n ? `${o.n} predicciones liquidadas` : 'aún sin resultados'],
+    ['Calibración (ECE)', o?.n ? HF.pct(o.ece, 1) : '—', 'error medio entre prob. y frecuencia'],
+    ['Acierto picks', state.perf?.picks?.n ? HF.pct(state.perf.picks.accuracy, 1) : '—', state.perf?.picks?.n ? `${state.perf.picks.n} picks` : ''],
+    ['Yield picks', pk?.bets ? HF.pct(pk.roi, 1) : '—', pk?.bets ? `${pk.bets} con cuota` : 'sin cuotas liquidadas'],
+  );
   $('kpis').innerHTML = kp.map(([l, v, s]) => `<div class="panel kpi"><div class="l">${l}</div><div class="v num">${v}</div><div class="text-xs muted">${s}</div></div>`).join('');
 }
 
@@ -88,14 +96,14 @@ function renderRanking() {
     $('rank-body').innerHTML = `<div class="empty">${msg}</div>`;
     return;
   }
-  const extraH = state.tab === 'value' ? '<th>Cuota</th><th>EV</th><th>¼ Kelly</th>' : state.tab === 'combinations' ? '<th>Riesgo</th><th>Cuota justa</th>' : '';
+  const extraH = state.tab === 'value' ? '<th>Cuota</th><th>Edge</th><th>EV</th><th>Stake</th>' : state.tab === 'combinations' ? '<th>Riesgo</th><th>Cuota justa</th>' : '';
   $('rank-body').innerHTML = `<table class="t"><thead><tr><th>#</th><th>Partido</th><th>Selección</th><th>Prob.</th><th>Confianza</th>${extraH}<th>Dato</th></tr></thead><tbody>${list.map((r, i) => `
     <tr><td class="num muted">${i + 1}</td>
       <td><a href="${HF.link('analysis', { id: r.matchId })}">${HF.esc(r.match)}</a><div class="text-xs muted">${HF.esc(r.tournament || '')} · ${HF.time(r.startTime)}</div></td>
       <td>${HF.esc(r.label)}${r.assumptions?.length ? `<div class="text-xs muted">${HF.esc(r.assumptions.join(' '))}</div>` : ''}</td>
       <td class="num" style="min-width:90px">${HF.pct(r.probability, 1)}${HF.pbar(r.probability)}</td>
-      <td class="num font-semibold">${HF.pct(r.confidence, 1)}</td>
-      ${state.tab === 'value' ? `<td class="num">${HF.n(r.odds)}</td><td class="num ok">+${HF.pct(r.ev, 1)}</td><td class="num">${HF.pct(r.kellyQuarter, 1)}</td>` : ''}
+      <td>${r.confidenceGrade ? HF.cBadge(r.confidenceGrade, r.confidenceScore) : HF.pct(r.confidence, 1)}</td>
+      ${state.tab === 'value' ? `<td class="num">${HF.n(r.odds)}</td><td class="num ok">${r.edge !== null && r.edge !== undefined ? '+' + HF.pct(r.edge, 1) : '—'}</td><td class="num ok">+${HF.pct(r.ev, 1)}</td><td class="num">${r.stake !== null && r.stake !== undefined ? HF.n(r.stake) : HF.pct(r.kellyQuarter, 1)}</td>` : ''}
       ${state.tab === 'combinations' ? `<td>${HF.esc(r.risk)}</td><td class="num">${HF.n(r.fairOdds)}</td>` : ''}
       <td>${HF.qBadge(r.quality, r.qualityScore)}</td></tr>`).join('')}</tbody></table>`;
 }
@@ -108,7 +116,7 @@ function renderMatches() {
     $('matches').innerHTML = `<div class="empty">${state.matches.length ? 'Ningún partido coincide con el filtro.' : 'No hay partidos guardados para esta fecha. Pulsa “Recolectar y pronosticar” para descargarlos.'}</div>`;
     return;
   }
-  $('matches').innerHTML = `<table class="t"><thead><tr><th>Hora</th><th>Partido</th><th>1 · X · 2</th><th>λ goles</th><th>O2.5</th><th>BTTS</th><th>Pick</th><th>Dato</th></tr></thead><tbody>${rows.map((m) => {
+  $('matches').innerHTML = `<table class="t"><thead><tr><th>Hora</th><th>Partido</th><th>1 · X · 2</th><th>λ goles</th><th>O2.5</th><th>BTTS</th><th>Pick</th><th>Confianza</th></tr></thead><tbody>${rows.map((m) => {
     const f = m.forecast;
     const score = m.homeGoals !== null ? `<span class="font-semibold num">${m.homeGoals}-${m.awayGoals}</span>` : '';
     let cells;
@@ -118,7 +126,7 @@ function renderMatches() {
       <td class="num text-xs">${HF.n(f.lambdas.home)} – ${HF.n(f.lambdas.away)}</td>
       <td class="num">${HF.pct(f.over25)}</td><td class="num">${HF.pct(f.btts)}</td>
       <td class="text-xs">${f.pick ? `${HF.esc(f.pick.label)} <b class="num">${HF.pct(f.pick.probability)}</b>` : '—'}</td>
-      <td>${HF.qBadge(f.quality.grade, f.quality.score)}</td>`;
+      <td>${f.confidence ? HF.cBadge(f.confidence.grade, f.confidence.score) : HF.qBadge(f.quality.grade, f.quality.score)}</td>`;
     return `<tr><td class="num">${HF.time(m.startTime)}<div class="text-xs muted">${HF.esc(m.status)}</div></td>
       <td><a href="${HF.link('analysis', { id: m.id })}">${HF.esc(m.home)} vs ${HF.esc(m.away)}</a> ${score}<div class="text-xs muted">${HF.esc(m.category ? m.category + ' · ' : '')}${HF.esc(m.tournament || '')}</div></td>${cells}</tr>`;
   }).join('')}</tbody></table>`;

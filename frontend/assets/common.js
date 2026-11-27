@@ -77,6 +77,8 @@ const HF = {
   time(unix) { return new Date(unix * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); },
   dateTime(unix) { return new Date(unix * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }); },
   today() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); },
+  /** Score de confianza 0–100 con nivel A+…D. */
+  cBadge(grade, score) { return grade ? `<span class="badge q-${grade === 'A+' ? 'Ap' : grade}" title="Score de confianza ${score ?? ''}/100">${grade}${score !== undefined ? ' · ' + score : ''}</span>` : '—'; },
   qBadge(grade, score) { return grade ? `<span class="badge q-${grade}" title="Calidad del dato ${score ?? ''}/100">${grade}${score !== undefined ? ' · ' + score : ''}</span>` : '—'; },
   bar3(p) {
     if (!p) return '<span class="muted">—</span>';
@@ -96,7 +98,7 @@ const HF = {
     return { text: v('--text'), muted: v('--muted'), border: v('--border'), accent: v('--accent'), home: v('--home'), draw: v('--draw'), away: v('--away'), good: v('--good'), bad: v('--bad') };
   },
   header() {
-    const links = [['index', 'Partidos del día'], ['stats', 'Rendimiento'], ['history', 'Historial']];
+    const links = [['index', 'Partidos del día'], ['value', 'Valor'], ['stats', 'Calibración y backtesting'], ['history', 'Historial']];
     const el = document.createElement('header');
     el.className = 'topbar';
     el.innerHTML = `<div class="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-4 flex-wrap">

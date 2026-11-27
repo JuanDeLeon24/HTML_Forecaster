@@ -30,7 +30,7 @@ HF.pages.settings = (root) => {
     </div></section>
     <section class="panel"><div class="panel-h"><h2>Qué recolectar</h2></div><div class="panel-b space-y-3 text-sm">
       <label class="block">Torneos (IDs de Sofascore separados por coma; vacío = todos)<br><input id="tournaments" class="w-full" value="${HF.esc(c.collection.tournaments.join(','))}"></label>
-      <p class="text-xs muted">17 Premier League · 8 LaLiga · 23 Serie A · 35 Bundesliga · 34 Ligue 1 · 7 Champions League · 679 Europa League · 17015 Conference League · 325 Brasileirão · 155 Liga Profesional Argentina · 11621 Liga MX · 242 MLS · 1335 Copa Sudamericana · 384 Copa Libertadores</p>
+      <p class="text-xs muted">17 Premier League · 18 Championship · 8 LaLiga · 23 Serie A · 35 Bundesliga · 34 Ligue 1 · 7 Champions League · 679 Europa League · 17015 Conference League · 325 Brasileirão · 155 Liga Profesional Argentina · 11621 Liga MX · 242 MLS · 1335 Copa Sudamericana · 384 Copa Libertadores</p>
       <div class="grid grid-cols-2 gap-3">
         <label>Máx. partidos por día (0 = sin límite)<br><input id="maxMatches" type="number" min="0" value="${c.collection.maxMatches}"></label>
         <label>Partidos de histórico por equipo<br><input id="historyDepth" type="number" min="5" max="50" value="${c.collection.historyDepth}"></label>
@@ -49,6 +49,7 @@ HF.pages.settings = (root) => {
     </div>
     <p class="text-xs muted">Los datos viven en este navegador y para este archivo. Exporta de vez en cuando como copia de seguridad o para pasarlos a otro equipo. El archivo exportado también sirve para la versión de servidor (data/forecaster.db).</p>
   </div></section>
+  <section class="panel"><div class="panel-h"><h2>Errores registrados</h2><span class="text-xs muted">timestamp · origen · endpoint · error · impacto</span></div><div class="scroll-x" id="errs"></div></section>
   <section class="panel"><div class="panel-h"><h2>Registro</h2></div><div class="panel-b"><pre id="log" class="text-xs muted" style="white-space:pre-wrap;max-height:260px;overflow:auto"></pre></div></section>`;
 
   const showCounts = () => HF.api('/health').then((h) => {
@@ -98,6 +99,8 @@ HF.pages.settings = (root) => {
     $('bm-copied').textContent = 'Copiado.';
   };
   refreshBookmarklet();
+  const errs = S.errorBuffer.slice(-50).reverse();
+  $('errs').innerHTML = errs.length ? `<table class="t"><tbody>${errs.map((e) => `<tr><td class="num text-xs">${HF.esc(e.timestamp.replace('T', ' ').slice(0, 19))}</td><td class="text-xs">${HF.esc(e.source)}</td><td class="text-xs muted" style="max-width:260px;overflow-wrap:anywhere">${HF.esc(e.endpoint || '')}</td><td class="text-xs">${HF.esc(e.error)}</td><td class="text-xs muted">${HF.esc(e.impact)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Sin errores en esta sesión.</div>';
   $('log').textContent = S.logBuffer.slice(-80).join('\n') || 'Sin actividad todavía.';
   showCounts();
 };

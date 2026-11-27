@@ -8,7 +8,7 @@
 const initSqlJs = require('sql.js/dist/sql-wasm.js');
 const config = require('./config');
 const { BrowserDatabase, idbGet } = require('./db');
-const { logBuffer } = require('./logger');
+const { logBuffer, errorBuffer } = require('./logger');
 const { createRepositories } = require('../backend/database/repositories');
 const services = require('../backend/services');
 const { setProvider } = require('../backend/providers');
@@ -102,7 +102,7 @@ async function boot() {
   const HF = window.HF;
   HF.transport = transport;
   HF.standalone = {
-    config, logBuffer, NET_HINT,
+    config, logBuffer, errorBuffer, NET_HINT,
     storageOk: () => storageOk,
     saveSettings(next) { const s = config.saveSettings(next); setProvider(makeProvider()); return s; },
     async testConnection() {

@@ -16,7 +16,7 @@ class Database {
   constructor(file = config.dbPath) {
     if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
     this.file = file;
-    this.conn = new DatabaseSync(file);
+    this.conn = openChecked(file);
     this.conn.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
     this.conn.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
     this.cache = new Map();
@@ -53,6 +53,23 @@ class Database {
 }
 
 const plain = (row) => ({ ...row });
+
+/** Abre la base y verifica su integridad; si está dañada, restaura la última copia de seguridad. */
+function openChecked(file) {
+  let conn = new DatabaseSync(file);
+  if (file === ':memory:') return conn;
+  let ok = false;
+  try { ok = conn.prepare('PRAGMA integrity_check').get()?.integrity_check === 'ok'; } catch { ok = false; }
+  if (ok) return conn;
+  conn.close();
+  const { latestBackup } = require('../lib/backup');
+  const b = latestBackup();
+  log.error('Base de datos dañada', { endpoint: file, impact: b ? `se restaura ${b}` : 'sin copias: se crea una base nueva' });
+  fs.renameSync(file, `${file}.corrupt-${Date.now()}`);
+  if (b) fs.copyFileSync(b, file);
+  conn = new DatabaseSync(file);
+  return conn;
+}
 
 let instance = null;
 function getDb() {

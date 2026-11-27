@@ -9,6 +9,7 @@
  *   ROI virtual: apuesta de 1 unidad a cada pick con cuota real registrada
  */
 const EPS = 1e-12;
+const { calibrationError, sharpness, sharpnessDistribution } = require('../calibration');
 
 function binaryMetrics(rows, threshold = 0.5) {
   const n = rows.length;
@@ -80,15 +81,48 @@ function fullReport(rows) {
   const byMarket = {};
   for (const r of rows) (byMarket[r.market] ??= []).push(r);
   const picks = rows.filter((r) => r.is_pick);
+  const withCal = (r) => {
+    const m = binaryMetrics(r);
+    if (!m.n) return m;
+    return { ...m, ...calibrationError(r), sharpness: sharpness(r) };
+  };
   return {
-    overall: binaryMetrics(rows),
-    picks: binaryMetrics(picks),
+    overall: withCal(rows),
+    picks: withCal(picks),
     result1X2: multiclass1X2(rows),
-    byMarket: Object.fromEntries(Object.entries(byMarket).map(([k, v]) => [k, binaryMetrics(v)])),
+    byMarket: Object.fromEntries(Object.entries(byMarket).map(([k, v]) => [k, withCal(v)])),
+    sharpnessDistribution: sharpnessDistribution(rows),
     calibration: calibration(rows),
     calibrationPicks: calibration(picks),
     roi: roi(rows),
   };
 }
 
-module.exports = { binaryMetrics, calibration, multiclass1X2, roi, fullReport };
+/**
+ * Monitoreo: precisión diaria, semanal y mensual (Accuracy, Brier, LogLoss, ROI y Yield del pick principal).
+ */
+function monitoring(rows, tz = 'UTC') {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+  const keyOf = {
+    daily: (t) => fmt.format(new Date(t * 1000)),
+    weekly: (t) => { const d = new Date(fmt.format(new Date(t * 1000)) + 'T12:00:00Z'); const day = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - day); return `sem. ${d.toISOString().slice(0, 10)}`; },
+    monthly: (t) => fmt.format(new Date(t * 1000)).slice(0, 7),
+  };
+  const out = {};
+  for (const [period, f] of Object.entries(keyOf)) {
+    const groups = new Map();
+    for (const r of rows) {
+      const k = f(r.start_time);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
+    }
+    out[period] = [...groups.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 60).map(([k, list]) => {
+      const m = binaryMetrics(list);
+      const r = roi(list);
+      return { period: k, n: m.n, accuracy: m.accuracy, brier: m.brier, logLoss: m.logLoss, profit: r.profit, roi: r.bets ? r.profit / 100 : null, yield: r.roi, bets: r.bets };
+    });
+  }
+  return out;
+}
+
+module.exports = { binaryMetrics, calibration, multiclass1X2, roi, fullReport, monitoring };

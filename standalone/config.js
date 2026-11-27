@@ -22,7 +22,7 @@ const config = {
     historyDepth: s.historyDepth ?? 20,
     statsDepth: s.statsDepth ?? 10,
     h2hStatsDepth: 5,
-    tournaments: Array.isArray(s.tournaments) ? s.tournaments : [17, 8, 23, 35, 34, 7, 679, 17015],
+    tournaments: Array.isArray(s.tournaments) ? s.tournaments : [17, 18, 8, 23, 35, 34, 7, 679, 17015],
     maxMatches: s.maxMatches ?? 0,
   },
   scheduler: { enabled: false },

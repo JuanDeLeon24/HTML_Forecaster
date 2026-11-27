@@ -4,6 +4,7 @@
  *  - Elo general: estilo World Football Elo (K ajustado por diferencia de goles, ventaja local).
  *  - Elo ofensivo / defensivo: ratings de goles. Goles esperados del local =
  *    base · 10^((atkLocal − defVisitante)/400); se actualizan con K·(goles − esperados).
+ *  - Elo local / visitante: ratings separados por sede (el local se mide con su rating como local).
  * Se recalcula desde cero en orden cronológico con todos los partidos de la base,
  * por lo que es reproducible y no depende del orden de recolección.
  */
@@ -27,7 +28,7 @@ function expectedScore(rHome, rAway, homeAdv) {
 function computeRatings(matches, { k = config.model.eloK, homeAdv = config.model.eloHomeAdvantage, initial = config.model.eloInitial, goalK = 8, baseGoals = 1.35 } = {}) {
   const r = new Map();
   const get = (id) => {
-    if (!r.has(id)) r.set(id, { elo: initial, atk: initial, def: initial, games: 0, lastPlayed: null });
+    if (!r.has(id)) r.set(id, { elo: initial, atk: initial, def: initial, home: initial, away: initial, homeGames: 0, awayGames: 0, games: 0, lastPlayed: null });
     return r.get(id);
   };
   for (const m of matches) {
@@ -38,6 +39,12 @@ function computeRatings(matches, { k = config.model.eloK, homeAdv = config.model
     const delta = k * goalMultiplier(m.home_goals - m.away_goals) * (s - e);
     h.elo += delta;
     a.elo -= delta;
+
+    // Elo local / visitante: rating del local como local frente al del visitante como visitante
+    const ev = expectedScore(h.home, a.away, homeAdv);
+    const dv = k * goalMultiplier(m.home_goals - m.away_goals) * (s - ev);
+    h.home += dv; a.away -= dv;
+    h.homeGames += 1; a.awayGames += 1;
 
     const expH = baseGoals * 1.1 * 10 ** ((h.atk - a.def) / 400);
     const expA = baseGoals * 0.9 * 10 ** ((a.atk - h.def) / 400);

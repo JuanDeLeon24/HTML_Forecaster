@@ -157,3 +157,106 @@ CREATE TABLE IF NOT EXISTS collection_runs (
   summary_json TEXT,
   error       TEXT
 );
+
+-- ===================== Tablas de la especificación Enterprise =====================
+
+-- Instantáneas de Elo (general, ofensivo, defensivo, local y visitante)
+CREATE TABLE IF NOT EXISTS elo_ratings (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  team_id       TEXT NOT NULL REFERENCES teams(id),
+  elo_overall   REAL NOT NULL,
+  elo_attack    REAL NOT NULL,
+  elo_defense   REAL NOT NULL,
+  elo_home      REAL,
+  elo_away      REAL,
+  games         INTEGER NOT NULL,
+  calculated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_elo_team ON elo_ratings(team_id, calculated_at);
+
+-- Probabilidades 1X2 de cada modelo individual por pronóstico (comparador de modelos)
+CREATE TABLE IF NOT EXISTS model_predictions (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  forecast_id         INTEGER NOT NULL REFERENCES forecasts(id),
+  match_id            TEXT NOT NULL REFERENCES matches(id),
+  model_name          TEXT NOT NULL,
+  home_probability    REAL NOT NULL,
+  draw_probability    REAL NOT NULL,
+  away_probability    REAL NOT NULL,
+  expected_home_goals REAL,
+  expected_away_goals REAL,
+  generated_at        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_modelpred_match ON model_predictions(match_id);
+
+-- Apuestas de valor detectadas en el momento del pronóstico (antes del partido)
+CREATE TABLE IF NOT EXISTS value_bets (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  forecast_id           INTEGER NOT NULL REFERENCES forecasts(id),
+  match_id              TEXT NOT NULL REFERENCES matches(id),
+  market                TEXT NOT NULL,
+  selection             TEXT NOT NULL,
+  line                  REAL NOT NULL DEFAULT 0,
+  odds                  REAL NOT NULL,
+  model_probability     REAL NOT NULL,
+  bookmaker_probability REAL NOT NULL,
+  edge_percent          REAL NOT NULL,
+  expected_value        REAL NOT NULL,
+  kelly_fraction        REAL NOT NULL,
+  stake                 REAL NOT NULL,
+  confidence_score      REAL NOT NULL,
+  accepted              INTEGER NOT NULL,      -- 1 recomendada, 0 descartada
+  discard_reason        TEXT,
+  outcome               INTEGER,
+  profit                REAL,
+  created_at            INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_value_match ON value_bets(match_id);
+
+CREATE TABLE IF NOT EXISTS calibration_results (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope       TEXT NOT NULL,                 -- mercado o modelo
+  n           INTEGER NOT NULL,
+  brier_score REAL, logloss REAL, rps REAL, ece REAL, mce REAL, sharpness REAL,
+  method      TEXT,                          -- none | platt | isotonic
+  created_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS backtesting_results (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  strategy     TEXT NOT NULL,
+  total_bets   INTEGER NOT NULL,
+  wins         INTEGER NOT NULL,
+  losses       INTEGER NOT NULL,
+  staked       REAL NOT NULL,
+  profit       REAL NOT NULL,
+  roi          REAL,
+  yield        REAL,
+  max_drawdown REAL,
+  created_at   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ml_training_history (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  model_name        TEXT NOT NULL,
+  training_samples  INTEGER NOT NULL,
+  validation_samples INTEGER NOT NULL,
+  accuracy          REAL,
+  logloss           REAL,
+  brier             REAL,
+  baseline_brier    REAL,
+  adopted           INTEGER NOT NULL,
+  reason            TEXT,
+  started_at        INTEGER NOT NULL,
+  finished_at       INTEGER NOT NULL
+);
+
+-- Vistas
+CREATE VIEW IF NOT EXISTS recent_matches AS
+  SELECT m.*, ht.name AS home_name, at.name AS away_name FROM matches m
+  JOIN teams ht ON ht.id = m.home_team_id JOIN teams at ON at.id = m.away_team_id
+  ORDER BY m.start_time DESC;
+
+CREATE VIEW IF NOT EXISTS model_roi AS
+  SELECT strategy, AVG(roi) AS avg_roi, SUM(profit) AS total_profit, MAX(created_at) AS last_run
+  FROM backtesting_results GROUP BY strategy;

@@ -62,7 +62,9 @@ npm run daily
 | `npm run settle` | Descarga resultados de partidos terminados y liquida las predicciones |
 | `npm run learn` | Reajusta pesos del ensamble y ρ de Dixon-Coles con predicciones liquidadas |
 | `npm run daily` | settle → learn → collect → forecast (ideal para un cron diario) |
-| `npm test` | Pruebas (modelos, métricas, mapeo de Sofascore y pipeline completo con un proveedor sintético) |
+| `npm test` | Pruebas (modelos, validación, calibración, walk-forward, backtesting, API y pipeline completo) |
+| `npm run coverage` | Pruebas con informe de cobertura |
+| `npm run backup` / `npm run health` | Copia de seguridad manual / estado de la base y últimos errores |
 
 **Primera recolección:** con todos los torneos del día puede haber cientos de partidos y miles de
 peticiones. Para empezar, limita con `TOURNAMENTS=17,8,23,35,34` (Premier, LaLiga, Serie A,
@@ -92,3 +94,5 @@ API-Football, Football-Data, etc. sin tocar el núcleo (ver `docs/ARCHITECTURE.m
 - [docs/MODELS.md](docs/MODELS.md): matemáticas de cada modelo, calidad del dato y métricas
 - [docs/API.md](docs/API.md): endpoints REST
 - [docs/ROADMAP.md](docs/ROADMAP.md): estado de las versiones v0.1 → v2.0
+- [docs/COMPLIANCE.md](docs/COMPLIANCE.md): cumplimiento de la especificación Enterprise, punto por punto
+- [docs/DATABASE.md](docs/DATABASE.md) y [docs/CALIBRATION.md](docs/CALIBRATION.md)

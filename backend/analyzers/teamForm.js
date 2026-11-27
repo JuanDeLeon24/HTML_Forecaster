@@ -27,6 +27,12 @@ function perspective(row, teamId) {
     cardsAgainst: cardsH !== null && cardsA !== null ? pick(cardsA, cardsH) : null,
     xgFor: statOrNull(row.home_xg, row.away_xg),
     xgAgainst: statOrNull(row.away_xg, row.home_xg),
+    shotsFor: statOrNull(row.home_shots, row.away_shots),
+    shotsAgainst: statOrNull(row.away_shots, row.home_shots),
+    sotFor: statOrNull(row.home_sot, row.away_sot),
+    sotAgainst: statOrNull(row.away_sot, row.home_sot),
+    foulsFor: statOrNull(row.home_fouls, row.away_fouls),
+    redFor: hasStats && row.home_red !== null && row.away_red !== null ? pick(row.home_red, row.away_red) : null,
   };
 }
 
@@ -57,7 +63,36 @@ function summarize(games) {
     cardsN: withCards.length,
     cardsFor: mean(withCards.map((g) => g.cardsFor)),
     cardsAgainst: mean(withCards.map((g) => g.cardsAgainst)),
+    ...attackDefense(games),
   };
+}
+
+/** Variables de ataque, defensa y disciplina (solo partidos con el dato; cada una con su n). */
+function attackDefense(games) {
+  const avg = (f) => { const v = games.map(f).filter((x) => x !== null && x !== undefined); return { v: mean(v), n: v.length }; };
+  const shots = avg((g) => g.shotsFor);
+  const withShots = games.filter((g) => g.shotsFor !== null && g.shotsFor > 0);
+  const goalsOnShots = withShots.reduce((a, g) => a + g.gf, 0);
+  const totalShots = withShots.reduce((a, g) => a + g.shotsFor, 0);
+  return {
+    shotsFor: shots.v, shotsN: shots.n, shotsAgainst: avg((g) => g.shotsAgainst).v,
+    sotFor: avg((g) => g.sotFor).v, sotAgainst: avg((g) => g.sotAgainst).v,
+    conversion: totalShots > 0 ? goalsOnShots / totalShots : null,
+    xgFor: avg((g) => g.xgFor).v, xgAgainst: avg((g) => g.xgAgainst).v, xgN: avg((g) => g.xgFor).n,
+    foulsFor: avg((g) => g.foulsFor).v, redsFor: avg((g) => g.redFor).v,
+  };
+}
+
+/**
+ * Actualización bayesiana Gamma-Poisson (modelo 9). Prior Gamma(α0 = k·μ, β0 = k) sobre la tasa
+ * de goles; cada partido aporta (w·goles, w). Posterior: α = α0 + Σw·g, β = β0 + Σw.
+ * Media = α/β (la fuerza usada por Poisson/Dixon-Coles) y desviación típica = √α/β.
+ */
+function gammaPosterior(values, weights, prior, k) {
+  let a = k * prior;
+  let b = k;
+  for (let i = 0; i < values.length; i++) { a += weights[i] * values[i]; b += weights[i]; }
+  return { mean: a / b, sd: Math.sqrt(a) / b, alpha: a, beta: b };
 }
 
 /**
@@ -67,7 +102,7 @@ function summarize(games) {
  * @param {object} baseline { home, away } medias de goles del pool
  * @param {number} refTime unix del partido a pronosticar (para decaimiento temporal)
  */
-function buildTeamProfile(teamId, rows, venue, baseline, refTime, params = config.model) {
+function buildTeamProfile(teamId, rows, venue, baseline, refTime, params = config.model, xgBase = null) {
   const games = rows.map((r) => perspective(r, teamId));
   const venueGames = games.filter((g) => g.isHome === (venue === 'home'));
 
@@ -77,8 +112,31 @@ function buildTeamProfile(teamId, rows, venue, baseline, refTime, params = confi
   const weights = games.map((g) => 0.5 ** (Math.max(0, refTime - g.startTime) / 86400 / params.decayHalfLifeDays));
   const adjScored = games.map((g) => (g.isHome ? g.gf / h : g.gf * h));
   const adjConceded = games.map((g) => (g.isHome ? g.ga * h : g.ga / h));
-  const attack = shrink(adjScored, weights, mu, params.shrinkageGames) / mu;
-  const defense = shrink(adjConceded, weights, mu, params.shrinkageGames) / mu;
+  const atkPost = gammaPosterior(adjScored, weights, mu, params.shrinkageGames);
+  const defPost = gammaPosterior(adjConceded, weights, mu, params.shrinkageGames);
+  const attack = atkPost.mean / mu;
+  const defense = defPost.mean / mu;
+
+  // Modelos 7 y 8 – xG / xGA: misma normalización con goles esperados en lugar de goles
+  let xgStrength = null;
+  const xgGamesAll = games.map((g, i) => ({ g, w: weights[i] })).filter((x) => x.g.xgFor !== null && x.g.xgAgainst !== null);
+  if (xgBase && xgBase.n >= 20 && xgBase.home > 0 && xgBase.away > 0 && xgGamesAll.length >= (params.minXgSample ?? 5)) {
+    const muX = (xgBase.home + xgBase.away) / 2;
+    const hx = Math.sqrt(xgBase.home / xgBase.away);
+    const ws = xgGamesAll.map((x) => x.w);
+    const a = gammaPosterior(xgGamesAll.map((x) => (x.g.isHome ? x.g.xgFor / hx : x.g.xgFor * hx)), ws, muX, params.shrinkageGames);
+    const d = gammaPosterior(xgGamesAll.map((x) => (x.g.isHome ? x.g.xgAgainst * hx : x.g.xgAgainst / hx)), ws, muX, params.shrinkageGames);
+    xgStrength = { attack: a.mean / muX, defense: d.mean / muX, mu: muX, homeFactor: hx, n: xgGamesAll.length };
+  }
+
+  // Físico: descanso y congestión (con los partidos registrados de cualquier competición)
+  const before = games.filter((g) => g.startTime < refTime);
+  const restDays = before.length ? (refTime - before[0].startTime) / 86400 : null;
+  const fatigue = {
+    restDays: restDays === null ? null : Math.round(restDays * 10) / 10,
+    matches7: before.filter((g) => refTime - g.startTime <= 7 * 86400).length,
+    matches14: before.filter((g) => refTime - g.startTime <= 14 * 86400).length,
+  };
 
   const statGames = games.filter((g) => g.cornersFor !== null);
   const cardGames = games.filter((g) => g.cardsFor !== null);
@@ -94,7 +152,9 @@ function buildTeamProfile(teamId, rows, venue, baseline, refTime, params = confi
     last50: summarize(games.slice(0, 50)),
     venue: summarize(venueGames),
     form: games.slice(0, 5).map((g) => g.result).join(''),
-    strength: { attack, defense, mu, homeFactor: h },
+    strength: { attack, defense, mu, homeFactor: h, attackSd: atkPost.sd / mu, defenseSd: defPost.sd / mu },
+    xgStrength,
+    fatigue,
     corners: {
       n: statGames.length,
       for: mean(statGames.map((g) => g.cornersFor)),

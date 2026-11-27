@@ -10,7 +10,10 @@ const jobs = require('../lib/jobs');
 const { isIsoDate, today, nowSec } = require('../lib/dates');
 const { buildRankings } = require('../engine/ranking');
 const { jointProbability } = require('../engine/combinations');
-const { fullReport } = require('../validation/metrics');
+const { fullReport, monitoring } = require('../validation/metrics');
+const { runBacktests } = require('../backtesting');
+const { collect1X2, blendLoss } = require('../learning/weights');
+const { detectDrift } = require('../learning/walkForward');
 const { label } = require('../engine/markets');
 const { getModelParams } = require('../learning/params');
 
@@ -47,6 +50,7 @@ const routes = [
           p1X2: f.output.probabilities?.['1X2'] ?? null, over25: f.output.probabilities?.OU.over['2.5'] ?? null,
           btts: f.output.probabilities?.BTTS.yes ?? null, pick: f.output.pick ?? null, lambdas: f.output.lambdas ?? null,
           quality: { score: f.quality.score, grade: f.quality.grade },
+          confidence: f.output.confidence ? { score: f.output.confidence.score, grade: f.output.confidence.grade } : null,
         } : null,
       };
     });
@@ -59,7 +63,7 @@ const routes = [
     if (!match) throw new ApiError(404, 'Partido no encontrado');
     const f = repos.latestForecast(params.matchId);
     const predictions = f ? repos.predictionsForForecast(f.id).map((p) => ({ ...p, label: label(p, { home: match.home_name, away: match.away_name }) })) : [];
-    return { match, forecast: f, predictions, odds: repos.oddsFor(match.id), incidents: repos.incidentsFor(match.id), stats: repos.statsFor(match.id) };
+    return { match, forecast: f, predictions, odds: repos.oddsFor(match.id), incidents: repos.incidentsFor(match.id), stats: repos.statsFor(match.id), modelPredictions: f && repos.modelPredictionsFor ? repos.modelPredictionsFor(f.id) : [] };
   }],
 
   ['GET', '/rankings', ({ query }) => {
@@ -82,7 +86,13 @@ const routes = [
       from: fromOf(query.from), to: toOf(query.to), market: query.market || undefined,
       tournamentId: query.tournament || undefined, teamId: query.team || undefined,
     });
-    return { ...fullReport(rows), params: getModelParams(repos), learnedHistory: repos.allParams() };
+    const params = getModelParams(repos);
+    const groups = collect1X2(repos);
+    const drift = detectDrift(groups.map((g) => blendLoss(g, params.ensemble)).filter((x) => x !== null));
+    return {
+      ...fullReport(rows), params, learnedHistory: repos.allParams(), monitoring: monitoring(rows, config.timezone),
+      trainingHistory: repos.trainingHistory ? repos.trainingHistory(30) : [], calibrationResults: repos.latestCalibration ? repos.latestCalibration() : [], drift,
+    };
   }],
 
   ['GET', '/history', ({ query }) => {
@@ -105,6 +115,21 @@ const routes = [
     };
   }],
 
+  ['GET', '/backtesting', () => {
+    const repos = services.getRepos();
+    const bt = runBacktests({ predictions: repos.settledPredictions({}), valueBets: repos.settledValueBets(), bankroll: config.model.bankroll });
+    return { bankroll: config.model.bankroll, strategies: bt };
+  }],
+
+  ['GET', '/value-bets', ({ query }) => {
+    const date = dateOf(query);
+    const [from, to] = services.dayRange(date);
+    const rows = services.getRepos().valueBetsBetween(from, to).map((v) => ({
+      ...v, match: `${v.home_name} vs ${v.away_name}`, label: label(v, { home: v.home_name, away: v.away_name }),
+    }));
+    return { date, bankroll: config.model.bankroll, kellyFraction: config.model.kellyFraction, accepted: rows.filter((v) => v.accepted), discarded: rows.filter((v) => !v.accepted) };
+  }],
+
   ['GET', '/teams', ({ query }) => services.getRepos().teamsSearch(String(query.q || ''))],
 
   ['GET', '/model', () => {
@@ -123,7 +148,7 @@ const routes = [
     return { status: r.alreadyRunning ? 409 : 202, body: r };
   }],
   ['POST', '/forecast', ({ query, body }) => services.forecast(dateOf(query, body))],
-  ['POST', '/settle', () => ({ status: 202, body: jobs.start('settle', () => services.settle()) })],
+  ['POST', '/settle', () => ({ status: 202, body: jobs.start('settle', async () => ({ settled: await services.settle(), learned: services.learn() })) })],
   ['POST', '/learn', () => services.learn()],
   ['GET', '/jobs', () => jobs.list()],
   ['GET', '/jobs/:id', ({ params }) => {
