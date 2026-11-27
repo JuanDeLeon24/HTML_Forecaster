@@ -15,7 +15,9 @@ root.innerHTML = `
       ${HF.standalone
     ? `<button class="btn btn-ghost" id="collect" title="Conexión directa: Sofascore suele rechazarla (HTTP 403)">Conexión directa</button>
       <label class="btn" style="cursor:pointer" title="Importar el archivo descargado con el recolector desde sofascore.com">Importar datos (.json)<input type="file" id="import-json" accept=".json,application/json" class="hidden"></label>`
-    : '<button class="btn" id="collect">Recolectar y pronosticar</button><button class="btn btn-ghost hidden" id="notify" title="Enviar el Top 10 y las apuestas de valor por WhatsApp">Enviar a WhatsApp</button>'}
+    : '<button class="btn" id="collect">Recolectar y pronosticar</button>'}
+      <button class="btn btn-ghost" id="notify" title="Abre WhatsApp Web con el Top 10 y las apuestas de valor ya escritos">Enviar por WhatsApp</button>
+      <button class="btn btn-ghost" id="notify-cfg" title="Cambiar el número de destino" aria-label="Cambiar número de WhatsApp">⚙</button>
     </div>
   </section>
   ${HF.standalone ? `<div class="panel panel-b text-sm" id="howto">
@@ -68,7 +70,6 @@ async function load() {
 function renderBootstrap(h) {
   const el = $('bootstrap-banner');
   if (!h || HF.standalone) { el.innerHTML = ''; return; }
-  if (h.whatsapp && $('notify')) $('notify').classList.remove('hidden');
   el.innerHTML = h.needsBootstrap ? `<div class="warn-box flex flex-wrap items-center gap-3"><div><b>Histórico insuficiente:</b> la base tiene ${h.counts.finished} partidos terminados.
     Con pocos partidos por equipo las probabilidades son poco fiables. Carga las temporadas completas de tus competiciones (una sola vez, unos minutos).</div>
     <button class="btn" id="bootstrap">Cargar histórico completo</button></div>` : '';
@@ -197,11 +198,23 @@ $('date').onchange = (e) => setDate(e.target.value);
 $('prev').onclick = () => shift(-1);
 $('next').onclick = () => shift(1);
 $('collect').onclick = collect;
-if ($('notify')) $('notify').onclick = async () => {
+$('notify').onclick = async () => {
   $('job').classList.remove('hidden');
-  try { const r = await HF.api('/notify', { method: 'POST', body: JSON.stringify({ date: state.date }) }); $('job-label').textContent = 'Enviado por WhatsApp:\n' + r.text; }
-  catch (e) { $('job-label').textContent = `No se pudo enviar: ${e.message}`; }
+  $('job-bar').style.width = '0';
+  try {
+    // Con la API oficial configurada (WHATSAPP_ENABLED=1) el envío es automático; si no, WhatsApp Web
+    if (HF.health?.whatsapp) {
+      const r = await HF.api('/notify', { method: 'POST', body: JSON.stringify({ date: state.date }) });
+      $('job-label').textContent = 'Enviado por la API de WhatsApp.';
+      return r;
+    }
+    const r = await HF.api(`/notify/preview?date=${state.date}`);
+    if (HF.whatsapp.open(r.text)) $('job-label').textContent = 'Se abrió WhatsApp Web con el mensaje escrito: revisa la pestaña y pulsa Enter para enviarlo.';
+    else $('job-label').textContent = 'Envío cancelado.';
+  } catch (e) { $('job-label').textContent = `No se pudo preparar el mensaje: ${e.message}`; }
+  return null;
 };
+$('notify-cfg').onclick = () => { const to = HF.whatsapp.askTo(true); if (to) { $('job').classList.remove('hidden'); $('job-label').textContent = `Número de destino guardado: +${to}`; } };
 if (HF.standalone) $('import-json').onchange = (e) => importJson(e.target.files[0]);
 
 async function importJson(file) {

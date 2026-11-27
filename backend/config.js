@@ -47,6 +47,8 @@ const config = {
   whatsapp: {
     enabled: process.env.WHATSAPP_ENABLED === '1',
     autoSend: process.env.WHATSAPP_AUTO === '1',
+    // WhatsApp Web (tu propia cuenta): número de destino solo dígitos con código de país, p. ej. 573001234567
+    webTo: (process.env.WHATSAPP_WEB_TO || '').replace(/\D/g, '') || null,
     provider: process.env.WHATSAPP_PROVIDER || 'meta', // meta | twilio
     meta: { token: process.env.WHATSAPP_META_TOKEN || null, phoneId: process.env.WHATSAPP_META_PHONE_ID || null, to: process.env.WHATSAPP_TO || null },
     twilio: { sid: process.env.TWILIO_SID || null, token: process.env.TWILIO_TOKEN || null, from: process.env.TWILIO_FROM || null, to: process.env.WHATSAPP_TO || null },

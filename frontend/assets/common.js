@@ -93,6 +93,33 @@ const HF = {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   },
+  /**
+   * WhatsApp Web: abre el chat del número de destino con el texto ya escrito en la cuenta que tengas
+   * abierta en web.whatsapp.com (tú pulsas Enter). Reutiliza la misma pestaña en cada envío.
+   * El número se guarda solo en este navegador.
+   */
+  whatsapp: {
+    key: 'hf-wa-to',
+    getTo() { try { return localStorage.getItem(this.key) || HF.health?.whatsappWebTo || ''; } catch { return HF.health?.whatsappWebTo || ''; } },
+    setTo(n) { try { localStorage.setItem(this.key, n); } catch { /* sin almacenamiento */ } },
+    askTo(force = false) {
+      let to = this.getTo();
+      if (!to || force) {
+        const v = prompt('Número de WhatsApp de destino con código de país (solo números, ej. 573001234567):', to || '');
+        if (v === null) return null;
+        to = v.replace(/\D/g, '');
+        if (to.length < 8) { alert('Número no válido.'); return null; }
+        this.setTo(to);
+      }
+      return to;
+    },
+    open(text, { force = false } = {}) {
+      const to = this.askTo(force);
+      if (!to) return false;
+      window.open(`https://web.whatsapp.com/send?phone=${to}&text=${encodeURIComponent(text)}`, 'hf-whatsapp');
+      return true;
+    },
+  },
   async exportCsv(type) { const r = await HF.api(`/export?type=${type}`); HF.download(r.filename, r.csv); },
   /** Score de confianza 0–100 con nivel A+…D. */
   cBadge(grade, score) { return grade ? `<span class="badge q-${grade === 'A+' ? 'Ap' : grade}" title="Score de confianza ${score ?? ''}/100">${grade}${score !== undefined ? ' · ' + score : ''}</span>` : '—'; },
