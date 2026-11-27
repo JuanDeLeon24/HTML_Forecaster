@@ -16,6 +16,8 @@
     "learn": "node --disable-warning=ExperimentalWarning backend/cli.js learn",
     "daily": "node --disable-warning=ExperimentalWarning backend/cli.js daily",
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.js",
+    "test-provider": "node scripts/test-provider.js",
+    "health": "node scripts/health-check.js",
     "test:e2e": "npx playwright test",
     "coverage": "node --disable-warning=ExperimentalWarning --experimental-test-coverage --test tests/*.test.js",
     "build:standalone": "node scripts/build-standalone.js"

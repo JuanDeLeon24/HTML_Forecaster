@@ -31,6 +31,25 @@ const config = {
     baseUrl: process.env.FOOTBALL_DATA_BASE_URL || 'https://api.football-data.org/v4',
     apiKey: process.env.FOOTBALL_DATA_API_KEY || null,
   },
+  apiFootball: {
+    baseUrl: process.env.API_FOOTBALL_BASE_URL || 'https://v3.football.api-sports.io',
+    apiKey: process.env.API_FOOTBALL_API_KEY || null,
+  },
+  whatsapp: {
+    enabled: process.env.WHATSAPP_ENABLED === '1',
+    provider: process.env.WHATSAPP_PROVIDER || 'meta', // meta | twilio
+    meta: {
+      token: process.env.WHATSAPP_META_TOKEN || null,
+      phoneId: process.env.WHATSAPP_META_PHONE_ID || null,
+      to: process.env.WHATSAPP_TO || null,
+    },
+    twilio: {
+      sid: process.env.TWILIO_SID || null,
+      token: process.env.TWILIO_TOKEN || null,
+      from: process.env.TWILIO_FROM || null,
+      to: process.env.WHATSAPP_TO || null,
+    },
+  },
   http: {
     minIntervalMs: int(process.env.REQUEST_INTERVAL_MS, 450),
     retries: int(process.env.REQUEST_RETRIES, 3),

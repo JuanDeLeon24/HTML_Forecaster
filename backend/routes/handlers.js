@@ -13,6 +13,7 @@ const { buildRankings } = require('../engine/ranking');
 const { jointProbability } = require('../engine/combinations');
 const { refreshLive } = require('../collectors/live');
 const { analyzeLive } = require('../engine/live');
+const { sendWhatsApp, buildTopMessage } = require('../lib/whatsapp');
 const { fullReport } = require('../validation/metrics');
 const { label } = require('../engine/markets');
 const { getModelParams } = require('../learning/params');
@@ -123,6 +124,15 @@ const routes = [
   }],
 
   ['GET', '/teams', ({ query }) => services.getRepos().teamsSearch(String(query.q || ''))],
+
+  ['POST', '/notify', async ({ query }) => {
+    const date = dateOf(query);
+    const [from, to] = services.dayRange(date);
+    const rankings = buildRankings(services.getRepos().forecastsBetween(from, to), Number(query.limit) || 10);
+    const text = buildTopMessage(rankings, Number(query.limit) || 10);
+    const result = await sendWhatsApp(text);
+    return { sent: true, text, result };
+  }],
 
   ['GET', '/export', ({ query }) => {
     const repos = services.getRepos();

@@ -36,8 +36,20 @@ class FootballDataProvider extends BaseProvider {
   }
 
   async getScheduledMatches(date) {
-    const json = await this.get(`/matches?dateFrom=${date}&dateTo=${date}`);
-    return (json?.matches ?? []).map((m) => this._mapMatch(m));
+    const out = [];
+    const cfgTournaments = require('../../config').collection.tournaments || [];
+    const ids = cfgTournaments.length ? cfgTournaments : [2021, 2016, 2014, 2002, 2019, 2015, 2001];
+    for (const id of ids) {
+      try {
+        const json = await this.get(`/competitions/${id}/matches?dateFrom=${date}&dateTo=${date}`);
+        out.push(...(json?.matches ?? []).map((m) => this._mapMatch(m)));
+      } catch (e) {
+        // ignore competition errors
+      }
+    }
+    // dedup by id
+    const seen = new Set();
+    return out.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)));
   }
   async getTeamRecentMatches(teamId, limit) {
     const id = String(teamId).split(':').pop();

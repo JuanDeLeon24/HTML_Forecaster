@@ -8,12 +8,13 @@
 const config = require('../config');
 const { SofascoreProvider } = require('./sofascore/client');
 const { FootballDataProvider } = require('./footballData/client');
+const { ApiFootballProvider } = require('./apiFootball/client');
 const { FailoverProvider } = require('./fallback');
 
 const registry = {
   sofascore: () => new SofascoreProvider(),
   'football-data': () => new FootballDataProvider(),
-  // 'api-football': () => new ApiFootballProvider(),   // futuro
+  'api-football': () => new ApiFootballProvider(),
 };
 
 let current = null;
