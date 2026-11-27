@@ -26,12 +26,14 @@ async function runDailyCollection(date, { provider, repos, onProgress = () => {}
   const now = Math.floor(Date.now() / 1000);
   const spent = () => provider.requestCount - startReq;
   const canSpend = (n = 1) => !budget || spent() + n <= budget;
-  const summary = { date, provider: provider.name, matches: 0, teams: 0, statsFetched: 0, h2h: 0, standings: 0, odds: 0, errors: [], budgetReached: false };
+  const summary = { date, provider: provider.name, matches: 0, teams: 0, statsFetched: 0, h2h: 0, standings: 0, odds: 0, errors: [], budgetReached: false, mixedSources: false };
   let statsLeft = statsBudget;
 
   try {
-    const matches = await collectFixtures(date, { provider, repos, ...options });
-    summary.matches = matches.length;
+    const collected = await collectFixtures(date, { provider, repos, ...options });
+    const matches = collected.matches;
+    summary.matches = matches.length || collected.existingCount || 0;
+    summary.mixedSources = !!collected.mixedSources;
     const teamIds = [...new Set(matches.flatMap((m) => [m.home.id, m.away.id]))];
     const total = teamIds.length + matches.length;
     let done = 0;

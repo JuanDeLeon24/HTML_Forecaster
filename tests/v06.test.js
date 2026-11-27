@@ -7,7 +7,8 @@ const { ApiFootballProvider } = require('../backend/providers/apiFootball/client
 const { FailoverProvider } = require('../backend/providers/fallback');
 const { BaseProvider } = require('../backend/providers/BaseProvider');
 const { runBootstrap } = require('../backend/collectors/bootstrap');
-const { allowedFor } = require('../backend/collectors/fixtures');
+const { allowedFor, collectFixtures } = require('../backend/collectors/fixtures');
+const { dayRange } = require('../backend/lib/dates');
 const { Database } = require('../backend/database/db');
 const { createRepositories } = require('../backend/database/repositories');
 const { primaryRows, roi, bootstrapCI, fullReport } = require('../backend/validation/metrics');
@@ -67,6 +68,28 @@ test('API-Football: la cuota agotada lanza error para que actúe el respaldo', a
   const http = fakeHttp({ '/fixtures?date=': { response: [], errors: { requests: 'You have reached the request limit for the day, go to dashboard' } } });
   const p = new ApiFootballProvider({ apiKey: 'x', http });
   await assert.rejects(() => p.getScheduledMatches('2026-11-27'), (e) => e.code === 'QUOTA' && /request limit/i.test(e.message));
+});
+
+test('no mezcla proveedores en la misma fecha (evita duplicados y equipos cruzados)', async () => {
+  const repos = createRepositories(new Database(':memory:'));
+  const date = '2026-11-27';
+  const [from] = dayRange(date);
+  repos.upsertMatch({ id: 'api-football:event:1', provider: 'api-football', startTime: from + 3600, status: 'notstarted',
+    home: { id: 'api-football:team:1', name: 'Alpha' }, away: { id: 'api-football:team:2', name: 'Beta' },
+    tournament: { id: 'api-football:comp:39', name: 'PL' } });
+  const provider = {
+    name: 'football-data', requestCount: 0,
+    async getScheduledMatches() {
+      return [{ id: 'football-data:event:9', provider: 'football-data', startTime: from + 3600, status: 'notstarted',
+        home: { id: 'football-data:team:9', name: 'Alpha FC' }, away: { id: 'football-data:team:10', name: 'Beta FC' },
+        tournament: { id: 'football-data:comp:2021', name: 'PL' } }];
+    },
+  };
+  const r = await collectFixtures(date, { provider, repos });
+  assert.equal(r.matches.length, 0);
+  assert.equal(r.existingCount, 1);
+  assert.equal(r.mixedSources, true);
+  assert.equal(repos.matchesBetween(from, from + 86400).length, 1);
 });
 
 test('failover: cada llamada usa el proveedor dueño del ID (no mezcla equipos)', async () => {

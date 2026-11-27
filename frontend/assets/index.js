@@ -194,7 +194,7 @@ async function collect() {
       if (j.status === 'done') {
         const c = j.result.collected; const f = j.result.forecasted;
         HF.refreshHealth();
-        $('job-label').textContent = `Listo: ${c.matches} partidos, ${c.teams} equipos, ${c.statsFetched} estadísticas nuevas, ${c.errors.length} errores · ${f.forecasted} pronósticos, ${f.insufficient} con muestra insuficiente.`;
+        $('job-label').textContent = `Listo: ${c.matches} partidos, ${c.teams} equipos, ${c.statsFetched} estadísticas nuevas, ${c.errors.length} errores · ${f.forecasted} pronósticos, ${f.insufficient} con muestra insuficiente.${c.mixedSources ? ' La fecha ya tenía partidos de otra fuente: se conservaron para no duplicar.' : ''}`;
         break;
       }
       if (j.status === 'error') { $('job-label').textContent = `Error: ${j.error}`; break; }
